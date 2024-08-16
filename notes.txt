@@ -1,0 +1,47 @@
+Returning Static Data: The get_system_name function now returns a pointer to static data (unameData.nodename) instead of a local variable, avoiding the issue of returning a pointer to a local variable.
+
+The #ifndef, #define, and #endif directives are used in C/C++ to prevent multiple inclusions of the same header file, a technique known as an include guard.
+
+fgets is used as char* string, then size of string max and then where to read the filefrom that is stdin or file pointer.
+
+To check your current username, type the command "whoami" in the terminal.
+To check your system hostname, type the command "hostname" in the terminal.
+
+
+#include <unistd.h>: Includes the POSIX API, providing access to system calls like getcwd (get current working directory).
+
+struct utsname {
+    char sysname[];    /* Operating system name (e.g., "Linux") */
+    char nodename[];   /* Name within "some implementation-defined network" */
+    char release[];    /* OS release (e.g., "2.6.28") */
+    char version[];    /* OS version */
+    char machine[];    /* Hardware identifier */
+};
+
+struct passwd {
+    char   *pw_name;       /* username */
+    char   *pw_passwd;     /* user password */
+    uid_t   pw_uid;        /* user ID */
+    gid_t   pw_gid;        /* group ID */
+    char   *pw_gecos;      /* user information */
+    char   *pw_dir;        /* home directory */
+    char   *pw_shell;      /* shell program */
+};
+
+getuid(): This function returns the real user ID of the calling process. The user ID is an integer that uniquely identifies a user in the system.
+
+getpwuid(uid_t uid): This function takes a user ID and returns a pointer to a struct passwd that contains information about the user, such as username, user ID, group ID, home directory, and shell.
+
+The unameData structure is declared as static, which means its value persists across function calls. This ensures that the memory is not freed after the function returns, preventing the returned pointer from becoming invalid.
+
+Color Coding:
+
+Blue (\033[0;34m): Used for directories.
+Green (\033[0;32m): Used for executable files (if the user has execute permissions).
+White (\033[0;37m): Used for regular files.
+
+
+strtok(cmd, " \t"): Strips out any leading or trailing spaces and tabs from the command.
+
+The strchr function in C is used to locate the first occurrence of a character in a string. Here's a detailed breakdown of what strchr(command, '&') is doing in your code:
+

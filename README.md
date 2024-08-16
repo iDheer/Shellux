@@ -1,2 +1,1 @@
-# MiniProject-1
-This is the codebase to create my own shell 
+AND THE JOURNEY BEGINS HERE, 15th august 2024 11:30 PM

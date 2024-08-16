@@ -1,0 +1,2 @@
+In this Mini Project, you will be building your own shell using C. As the scale of code will be very large, it is necessary to write modular code. Do NOT write monolithic code. Following is the definition of what modular code should look like : your codebase must be separated in different C files based on the tasks that it is intended to perform. Create header files to include headers from C library. 
+
