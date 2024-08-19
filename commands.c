@@ -76,33 +76,42 @@ void list_directory(const char *path) {
 }
 
 void execute_command(char *cmd) {
+    printf("cmd value from execute_command: '%s'\n", cmd);
+
     char *args[100];
     int argc = 0;
     char *redirect_file = NULL;
     int redirect_type = 0; // 1 for '>', 2 for '>>', 3 for '<'
 
-    // Tokenize command and handle redirection symbols
-    for (char *token = strtok(cmd, " \t\n"); token != NULL; token = strtok(NULL, " \t\n")) {
-        if (strcmp(token, ">") == 0) {
+    // Tokenize command and arguments
+    while ((args[argc] = strtok(cmd, " \t\n")) != NULL) {
+        cmd = NULL;
+        if (strcmp(args[argc], ">") == 0) {
             redirect_type = 1;
             redirect_file = strtok(NULL, " \t\n");
             break;
-        } else if (strcmp(token, ">>") == 0) {
+        } else if (strcmp(args[argc], ">>") == 0) {
             redirect_type = 2;
             redirect_file = strtok(NULL, " \t\n");
             break;
-        } else if (strcmp(token, "<") == 0) {
+        } else if (strcmp(args[argc], "<") == 0) {
             redirect_type = 3;
             redirect_file = strtok(NULL, " \t\n");
             break;
-        } else {
-            args[argc++] = token;
         }
+        argc++;
     }
     args[argc] = NULL; // Null-terminate the arguments array
 
     if (args[0] == NULL) {
         return; // No command entered
+    }
+
+    // Handle custom command: `ls`
+    if (strcmp(args[0], "ls") == 0) {
+        char *path = argc > 1 ? args[1] : ".";
+        list_directory(path);
+        return;
     }
 
     // Handle redirection if necessary
@@ -127,7 +136,7 @@ void execute_command(char *cmd) {
         close(fd);
     }
 
-    // Execute the command
+    // For other commands, fallback to execvp
     execvp(args[0], args);
     perror("execvp"); // If execvp fails, print error message
     exit(EXIT_FAILURE);
