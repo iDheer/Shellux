@@ -7,6 +7,8 @@ fgets is used as char* string, then size of string max and then where to read th
 To check your current username, type the command "whoami" in the terminal.
 To check your system hostname, type the command "hostname" in the terminal.
 
+snprintf is used to format and store a string into the display_path buffer. It does not directly produce output to the terminal.
+
 
 #include <unistd.h>: Includes the POSIX API, providing access to system calls like getcwd (get current working directory).
 
@@ -45,3 +47,66 @@ strtok(cmd, " \t"): Strips out any leading or trailing spaces and tabs from the 
 
 The strchr function in C is used to locate the first occurrence of a character in a string. Here's a detailed breakdown of what strchr(command, '&') is doing in your code:
 
+It seems that the cd command was processed, but the prompt wasn't updated to reflect the new directory. The issue might be due to the way cd is handled. In most shell implementations, cd is a built-in command because it modifies the shell's current working directory, and this change needs to persist in the shell process.
+
+Addressing the cd Command Handling:
+Implement cd as a Built-in Command: Since cd needs to change the working directory of the shell itself (not just in a child process), you must handle it directly in the shell process before forking.
+
+signal Function Syntax:
+void (*signal(int sig, void (*handler)(int)))(int);
+
+pid_t waitpid(pid_t pid, int *status, int options);
+Purpose: Specifies which child process to wait for.
+Values:
+-1: Waits for any child process (similar to wait).
+0: Waits for any child process in the same process group as the calling process.
+> 0: Waits for the child process with the specified process ID (pid).
+< -1: Waits for any child process in the process group whose ID is -pid
+
+The status contains information about how the child process terminated (e.g., whether it exited normally, was killed by a signal, etc.).
+
+
+ (Default Behavior)
+
+Description: When you use 0 as the options argument, waitpid behaves in the traditional blocking mode. It waits for a child process to change its state, such as terminating or stopping.
+Behavior:
+Blocking: The function call will block (i.e., pause execution) until at least one child process changes state.
+Child State Change: This includes scenarios where a child process exits, is stopped by a signal, or resumes if it was previously stopped.
+WNOHANG
+
+Description: The WNOHANG option makes waitpid non-blocking. It allows the function to return immediately if no child process has exited.
+Behavior:
+Non-Blocking: If no child processes have changed state by the time waitpid is called, it returns 0 right away without blocking the execution of your program.
+Usage: This is useful in scenarios where you want to periodically check the status of child processes without pausing execution (e.g., in a loop or asynchronous operations).
+WUNTRACED
+
+Description: The WUNTRACED option tells waitpid to return information if a child process has stopped (e.g., due to receiving a signal) but not yet terminated.
+Behavior:
+Stopped Processes: If a child process is stopped (for example, by receiving a SIGSTOP, SIGTSTP, SIGTTIN, or SIGTTOU signal), waitpid will return its process ID and provide information about the stopping signal.
+Use Case: This is useful when you want to track processes that are stopped due to signals and potentially handle them accordingly, even if they haven't exited yet.
+WCONTINUED
+
+Description: The WCONTINUED option allows waitpid to return when a stopped child process resumes execution due to receiving the SIGCONT signal.
+Behavior:
+Resumed Processes: If a previously stopped process has been resumed with SIGCONT, waitpid will return information about this event.
+Use Case: This is useful in scenarios where you need to monitor the state of processes that have been stopped and then continued, such as managing a set of background jobs that might be interrupted and later resumed.
+
+If waitpid returns a positive value, it indicates the process ID (pid) of a child process that has changed state. The value is greater than zero if a specific child process has exited or stopped.
+
+strtok uses a single character or a string as a delimiter, but strsep can handle multi-character delimiters more flexibly.
+strsep modifies the pointer passed to it, allowing for easier splitting of the command when using pipes.
+
+strtok(cmd, " \t\n"): This call splits the string cmd into tokens using space, tab, or newline as delimiters. On the first call, cmd points to the command string.
+cmd = NULL;: After the first token is extracted, cmd is set to NULL to ensure subsequent calls to strtok continue from where the previous call left off.
+
+args[argc] = NULL;: The array is null-terminated to mark the end of the arguments.
+
+Pipe Creation (pipefd[2]): pipe(pipefd) creates a pipe. pipefd[0] is for reading, and pipefd[1] is for writing.
+Forking Process (pid1 = fork()): This creates a child process to handle the first part of the command.
+Closing Unused Pipe End (close(pipefd[0])): The child process closes the reading end of the pipe because it only needs to write.
+Redirecting Output (dup2(pipefd[1], STDOUT_FILENO)): The child's standard output (STDOUT_FILENO) is redirected to the pipe's writing end.
+Executing the Command: The command (pipe_parts[0]) is executed, and its output is sent through the pipe.
+
+1 for >, which redirects output to a file (overwrite).
+2 for >>, which appends output to a file.
+3 for <, which redirects input from a file.

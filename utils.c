@@ -6,6 +6,12 @@
 #include <sys/utsname.h>
 #include "utils.h"
 
+char *shell_home_directory; // Define the global variable
+
+void initialize_shell_home_directory() {
+    shell_home_directory = getcwd(NULL, 0); // Get the current working directory
+}
+
 // Get the current username
 char* get_username() {
     struct passwd *pw = getpwuid(getuid());
@@ -21,6 +27,5 @@ char* get_system_name() {
 
 // Check if the current directory is the home directory
 int is_home_directory(const char *cwd) {
-    char *home = getenv("HOME");
-    return strcmp(cwd, home) == 0;
+    return strcmp(cwd, shell_home_directory) == 0;
 }
