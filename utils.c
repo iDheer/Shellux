@@ -81,22 +81,36 @@ void execute_command(char *cmd) {
     if (args[0] == NULL) {
         return; // No command entered
     }
+
+    // now only the valid commands need to be stored in the log so ill use snprintf to create the string which will be entered in the log
+    char log_entry[4096];
+    snprintf(log_entry, sizeof(log_entry), "%s", args[0]);
+    for (int i = 1; i < argc; i++) {
+        snprintf(log_entry + strlen(log_entry), sizeof(log_entry) - strlen(log_entry), " %s", args[i]);
+    }
+
     if (strcmp(args[0], "hop") == 0) {
         hop(args, argc);
+        add_to_log(log_entry);
         return;
     }
     if (strcmp(args[0], "reveal") == 0) {
+        add_to_log(log_entry);
         reveal(args, argc);
     }
     if (strcmp(args[0], "log") == 0) {
+        add_to_log(log_entry);
         log_command(args, argc);
     }
-
-    // Debugging: Print the command and arguments
-    printf("Executing command: %s\n", args[0]);
-    for (int i = 0; i < argc; i++) {
-        printf("Arg[%d]: '%s'\n", i, args[i]);
+    else{
+        printf("Command not found as of now\n");
     }
+
+    // // Debugging: Print the command and arguments
+    // printf("Executing command: %s\n", args[0]);
+    // for (int i = 0; i < argc; i++) {
+    //     printf("Arg[%d]: '%s'\n", i, args[i]);
+    // }
 }
 
 //  this is my function to process commands separated by ';' and handle background execution with '&'

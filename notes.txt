@@ -101,12 +101,40 @@ cmd = NULL;: After the first token is extracted, cmd is set to NULL to ensure su
 
 args[argc] = NULL;: The array is null-terminated to mark the end of the arguments.
 
-Pipe Creation (pipefd[2]): pipe(pipefd) creates a pipe. pipefd[0] is for reading, and pipefd[1] is for writing.
-Forking Process (pid1 = fork()): This creates a child process to handle the first part of the command.
-Closing Unused Pipe End (close(pipefd[0])): The child process closes the reading end of the pipe because it only needs to write.
-Redirecting Output (dup2(pipefd[1], STDOUT_FILENO)): The child's standard output (STDOUT_FILENO) is redirected to the pipe's writing end.
-Executing the Command: The command (pipe_parts[0]) is executed, and its output is sent through the pipe.
 
-1 for >, which redirects output to a file (overwrite).
-2 for >>, which appends output to a file.
-3 for <, which redirects input from a file.
+
+memmove is a standard C library function that copies a block of memory from one location to another.
+Parameters:
+&command_log[0]: The destination address (starting from the first element).
+&command_log[1]: The source address (starting from the second element).
+sizeof(char*) * (MAX_LOG_SIZE - 1): The number of bytes to copy. This expression multiplies the size of a pointer (char*) by the number of elements being moved (MAX_LOG_SIZE - 1).
+Why memmove?
+memmove is used instead of memcpy because it correctly handles overlapping memory regions. In this case, the source and destination overlap because elements are being shifted within the same array. memmove ensures that the data is moved safely, even if the source and destination overlap.
+
+
+The code snippet provided is constructing a single string (log_entry) from the command and its arguments, which will then be stored in the log if the command is valid. Here's a step-by-step breakdown of what each part does:
+
+1. char log_entry[4096];
+This declares a character array log_entry with a size of 4096 bytes. This buffer will hold the complete command along with its arguments, all in one string.
+2. snprintf(log_entry, sizeof(log_entry), "%s", args[0]);
+Purpose: Initializes log_entry with the command (the first argument).
+Details:
+snprintf is a safer version of sprintf that includes bounds checking. It formats the string and writes it to the log_entry buffer.
+"%s": This format specifier tells snprintf to write the string pointed to by args[0] into log_entry.
+sizeof(log_entry): Ensures that no more than 4096 bytes are written to avoid buffer overflow.
+After this line, log_entry contains the command (e.g., "reveal" if args[0] was "reveal").
+3. for (int i = 1; i < argc; i++) { snprintf(log_entry + strlen(log_entry), sizeof(log_entry) - strlen(log_entry), " %s", args[i]); }
+Purpose: Appends each argument to the log_entry string, separated by spaces.
+Details:
+The for loop starts from i = 1 to skip the command (already added) and iterates through all the arguments provided in args[].
+log_entry + strlen(log_entry): This calculates the position in log_entry where the next argument should be appended (i.e., after the current end of the string).
+sizeof(log_entry) - strlen(log_entry): Ensures that snprintf does not write beyond the remaining space in log_entry.
+" %s": Appends a space followed by the next argument (args[i]) to the current log_entry string.
+By the end of the loop, log_entry contains the entire command with all its arguments in a single string.
+Example:
+Let's say the command is reveal with the arguments test, -a, and -l:
+
+Initial log_entry: After the first snprintf, log_entry is "reveal".
+After 1st iteration (i = 1): log_entry becomes "reveal test".
+After 2nd iteration (i = 2): log_entry becomes "reveal test -a".
+After 3rd iteration (i = 3): log_entry becomes "reveal test -a -l".

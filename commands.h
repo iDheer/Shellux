@@ -1,6 +1,10 @@
 #ifndef COMMANDS_H
 #define COMMANDS_H
 
-void hop(char **args, int argc); // Function to change the directory
+void hop(char **args, int argc);
+void init_log(); 
+void cleanup_log();                
+void log_command(char **args, int argc); 
+void reveal(char **args, int argc); 
 
-#endif
+#endif 
