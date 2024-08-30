@@ -89,17 +89,16 @@ void execute_command(char *cmd) {
         snprintf(log_entry + strlen(log_entry), sizeof(log_entry) - strlen(log_entry), " %s", args[i]);
     }
 
+
     if (strcmp(args[0], "hop") == 0) {
+    // printf("reach\n");
         hop(args, argc);
-        add_to_log(log_entry);
         return;
     }
-    if (strcmp(args[0], "reveal") == 0) {
-        add_to_log(log_entry);
-        reveal(args, argc);
-    }
+    // if (strcmp(args[0], "reveal") == 0) {
+    //     reveal(args, argc);
+    // }
     if (strcmp(args[0], "log") == 0) {
-        add_to_log(log_entry);
         log_command(args, argc);
     }
     else{
@@ -154,6 +153,7 @@ void process_command(char *input) {
                     perror("fork");
                 }
             } else {
+                // printf("Foreground command\n");
                 execute_command(command);
             }
         }

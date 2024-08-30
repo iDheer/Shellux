@@ -14,6 +14,7 @@
 #include <errno.h>
 #include<fcntl.h>
 #include <sys/stat.h>
+#include <libgen.h>
 
 #define LOG_FILE_PATH "command_log.txt"
 #define MAX_LOG_SIZE 15
@@ -22,13 +23,28 @@ static char prev_dir[PATH_MAX] = ""; // Global variable for previous directory
 char *command_log[MAX_LOG_SIZE];
 int log_count = 0;
 
-
     void hop(char **args, int argc) {
         char *target_dir;
         char cwd[PATH_MAX];
 
         // now i need to implement for absolute paths, he one thing i know is that it will always have argc =2 as 1 is hop command and other is an entire path without spaces and the it will have / as a character at the start
         // 1 way in which i could be given the arguements is like hop /home/ineshdheer/Downloads, this case has already been handled and the other way for absolute paths is like hop ~/project, this is what i need to fix 
+
+        if (argc == 1 && strcmp(args[0], "hop") == 0) {
+            target_dir = shell_home_directory;
+            if (chdir(target_dir) == -1) {
+                perror("chdir");
+                return;
+            }
+
+            // Print the new working directory
+            if (getcwd(cwd, sizeof(cwd)) == NULL) {
+                perror("getcwd");
+                return;
+            }
+            printf("%s\n", cwd);
+            return;
+        }
 
         if (args[1][0] == '~' && args[1][1] == '/') {
                 // Handle case where path starts with ~/
@@ -58,19 +74,18 @@ int log_count = 0;
                 return;
             }
 
-            // add_to_log(final_dir); // Add the final directory to the log
-
             free(final_dir); 
             return;
 
         }
+
+        // printf("%s", args[0]);
 
         for (int i = 1; i < argc; ++i) {
             target_dir = args[i];
 
             // Handle '.' for the current directory 
             if (strcmp(target_dir, ".") == 0) {
-                // add_to_log("hop ."); // Add the current directory to the log
                 target_dir = cwd;
             }
             // Handle '..' for the parent directory
@@ -83,13 +98,11 @@ int log_count = 0;
                     perror("getcwd");
                     return;
                 }
-                // add_to_log("hop .."); // Add the parent directory to the log
                 printf("%s\n", cwd);
                 continue;
             }
             // Handle '~' for the shell's home directory
             else if (strcmp(target_dir, "~") == 0) {
-                // add_to_log("hop ~"); // Add the home directory to the log
                 target_dir = shell_home_directory;
             }
             // Handle '-' for the previous directory
@@ -98,7 +111,6 @@ int log_count = 0;
                     printf("No previous directory\n");
                     return;
                 }   
-                // add_to_log("hop -"); // Add the previous directory to the log
                 target_dir = prev_dir;
             }
             
@@ -127,23 +139,8 @@ int log_count = 0;
         }
 
         // If no arguments are provided, hop to the home directory
-        if (argc == 1) {
-            target_dir = shell_home_directory;
-            if (chdir(target_dir) == -1) {
-                perror("chdir");
-                return;
-            }
-
-            // Print the new working directory
-            if (getcwd(cwd, sizeof(cwd)) == NULL) {
-                perror("getcwd");
-                return;
-            }
-            printf("%s\n", cwd);
-        }
     }
 
-    // Read log from file at startup
     void load_log() {
         FILE *log_file = fopen(LOG_FILE_PATH, "r");
         if (!log_file) return;
@@ -157,17 +154,31 @@ int log_count = 0;
         fclose(log_file);
     }
 
-    // Write log to file at shutdown
-    void save_log() {
-        FILE *log_file = fopen(LOG_FILE_PATH, "w");
-        if (!log_file) return;
-        // printf("Saving log to file\n");
-        for (int i = 0; i < log_count; ++i) {
-            fprintf(log_file, "%s\n", command_log[i]);
+   void save_log() {
+    FILE *log_file = fopen(LOG_FILE_PATH, "w");
+    if (!log_file) return;
 
-            free(command_log[i]);
+    for (int i = 0; i < log_count; ++i) {
+        fprintf(log_file, "%s\n", command_log[i]);
+        free(command_log[i]);  // Freeing here
+        command_log[i] = NULL;  // Ensuring pointer is nullified after freeing
+    }
+    log_count = 0;  // Reset log count after saving
+    fclose(log_file);
+    }
+
+    // Initialize the log at startup
+    void init_log() {
+        FILE *log_file = fopen(LOG_FILE_PATH, "a");
+        if (log_file) {
+            fclose(log_file); // Close immediately after ensuring the file exists
         }
-        fclose(log_file);
+        load_log(); // Load the log from the file
+    }
+
+    // Cleanup and save the log at shutdown
+    void cleanup_log() {
+        save_log(); // Log saving already frees memory, so clear_log() is no longer needed
     }
 
     // Add a command to the log
@@ -175,37 +186,44 @@ int log_count = 0;
         if (log_count > 0 && strcmp(command_log[log_count - 1], command) == 0) {
             return; // Don't add if it's the same as the last command
         }
-        if(strcmp(command, "log") == 0) {
-            return; // Don't add if the command is 'log'
+        if (strstr(command, "log") != NULL) {
+            return; // Don't add if the command contains the word 'log' anywhere
         }
-        if(strcmp(command, "log purge") == 0) {
+        if (strcmp(command, "log purge") == 0) {
             return; // Don't add if the command is 'log purge'
         }
-        if (log_count < MAX_LOG_SIZE) {
-            command_log[log_count++] = strdup(command);
-        } else {
+
+        // If the log is full, free the oldest entry before shifting
+        if (log_count >= MAX_LOG_SIZE) {
             free(command_log[0]);
             memmove(&command_log[0], &command_log[1], sizeof(char*) * (MAX_LOG_SIZE - 1));
-            // Shifts all the elements in the command_log array one position to the left, effectively removing the oldest command and making room for the new one.
-            command_log[MAX_LOG_SIZE - 1] = strdup(command);
+            log_count--;
         }
+
+        command_log[log_count] = strdup(command);
+        if (command_log[log_count] == NULL) {
+            perror("strdup");
+            return;
+        }
+        log_count++;
     }
 
     // Display the log
     void display_log() {
         for (int i = 0; i < log_count; ++i) {
-            printf("%s\n", command_log[log_count - i - 1]); // Display the log in reverse order
+            printf("%d: %s\n", i, command_log[log_count - i - 1]); // Display the log in reverse order with index
         }
     }
 
     // Clear the log
     void clear_log() {
-        for (int i = 0; i < log_count; ++i) {
-            free(command_log[i]);
-        }
-        log_count = 0;
-        save_log(); // Save the cleared log to the file
+    for (int i = 0; i < log_count; ++i) {
+        free(command_log[i]);
+        command_log[i] = NULL;
     }
+    log_count = 0;
+    save_log(); // Save the cleared log to the file
+}
 
     // Execute a command from the log
     void execute_from_log(int index) {
@@ -218,11 +236,7 @@ int log_count = 0;
         printf("Executing: %s\n", command_to_execute);
 
         process_command(command_to_execute);
-
-        // If it's not the most recent command, add it to the log
-        if (index != log_count - 1) {
-            add_to_log(command_to_execute);
-        }
+        
     }
 
     // Handle the log command
@@ -239,140 +253,139 @@ int log_count = 0;
         }
     }
 
-    // Initialize the log at startup
-    void init_log() {
-        load_log(); // Load the log from the file
-    }
 
-    // Cleanup and save the log at shutdown
-    void cleanup_log() {
-        save_log(); // Save the log to the file
-    }
+//     void print_file_details(const char *path, const char *filename) {
+//     struct stat fileStat;
+//     char fullpath[PATH_MAX];
+//     snprintf(fullpath, sizeof(fullpath), "%s/%s", path, filename);
 
-    void print_file_details(const char *path, const char *filename) {
-    struct stat fileStat;
-    char fullpath[PATH_MAX];
-    snprintf(fullpath, sizeof(fullpath), "%s/%s", path, filename);
+//     if (stat(fullpath, &fileStat) == -1) {
+//         perror("stat");
+//         return;
+//     }
 
-    if (stat(fullpath, &fileStat) == -1) {
-        perror("stat");
-        return;
-    }
+//     // Print file type and permissions
+//     printf((S_ISDIR(fileStat.st_mode)) ? "d" : "-");
+//     printf((fileStat.st_mode & S_IRUSR) ? "r" : "-");
+//     printf((fileStat.st_mode & S_IWUSR) ? "w" : "-");
+//     printf((fileStat.st_mode & S_IXUSR) ? "x" : "-");
+//     printf((fileStat.st_mode & S_IRGRP) ? "r" : "-");
+//     printf((fileStat.st_mode & S_IWGRP) ? "w" : "-");
+//     printf((fileStat.st_mode & S_IXGRP) ? "x" : "-");
+//     printf((fileStat.st_mode & S_IROTH) ? "r" : "-");
+//     printf((fileStat.st_mode & S_IWOTH) ? "w" : "-");
+//     printf((fileStat.st_mode & S_IXOTH) ? "x" : "-");
 
-    // Print file type and permissions
-    printf((S_ISDIR(fileStat.st_mode)) ? "d" : "-");
-    printf((fileStat.st_mode & S_IRUSR) ? "r" : "-");
-    printf((fileStat.st_mode & S_IWUSR) ? "w" : "-");
-    printf((fileStat.st_mode & S_IXUSR) ? "x" : "-");
-    printf((fileStat.st_mode & S_IRGRP) ? "r" : "-");
-    printf((fileStat.st_mode & S_IWGRP) ? "w" : "-");
-    printf((fileStat.st_mode & S_IXGRP) ? "x" : "-");
-    printf((fileStat.st_mode & S_IROTH) ? "r" : "-");
-    printf((fileStat.st_mode & S_IWOTH) ? "w" : "-");
-    printf((fileStat.st_mode & S_IXOTH) ? "x" : "-");
+//     // Print number of links
+//     printf(" %lu", fileStat.st_nlink);
 
-    // Print number of links
-    printf(" %lu", fileStat.st_nlink);
+//     // Print user and group name
+//     struct passwd *pwd = getpwuid(fileStat.st_uid);
+//     struct group *grp = getgrgid(fileStat.st_gid);
+//     printf(" %s %s", pwd ? pwd->pw_name : "???", grp ? grp->gr_name : "???");
 
-    // Print user and group name
-    struct passwd *pwd = getpwuid(fileStat.st_uid);
-    struct group *grp = getgrgid(fileStat.st_gid);
-    printf(" %s %s", pwd ? pwd->pw_name : "???", grp ? grp->gr_name : "???");
+//     // Print file size
+//     printf(" %5ld", fileStat.st_size);
 
-    // Print file size
-    printf(" %5ld", fileStat.st_size);
+//     // Print last modification time
+//     char timebuff[80];
+//     strftime(timebuff, sizeof(timebuff), "%b %d %H:%M", localtime(&fileStat.st_mtime));
+//     printf(" %s", timebuff);
 
-    // Print last modification time
-    char timebuff[80];
-    strftime(timebuff, sizeof(timebuff), "%b %d %H:%M", localtime(&fileStat.st_mtime));
-    printf(" %s", timebuff);
-
-    // Print file name with color coding
-    if (S_ISDIR(fileStat.st_mode)) {
-        printf(" \033[1;34m%s\033[0m\n", filename); // Blue for directories
-    } else if (fileStat.st_mode & S_IXUSR) {
-        printf(" \033[1;32m%s\033[0m\n", filename); // Green for executables
-    } else {
-        printf(" \033[0;37m%s\033[0m\n", filename); // White for regular files
-    }
-}
+//     // Print file name with color coding
+//     if (S_ISDIR(fileStat.st_mode)) {
+//         printf(" \033[1;34m%s\033[0m\n", filename); // Blue for directories
+//     } else if (fileStat.st_mode & S_IXUSR) {
+//         printf(" \033[1;32m%s\033[0m\n", filename); // Green for executables
+//     } else {
+//         printf(" \033[0;37m%s\033[0m\n", filename); // White for regular files
+//     }
+// }
 
 
-    void reveal(char **args, int argc) {
-    int show_all = 0;
-    int show_long = 0;
-    char *target_dir = ".";
-    int optind = 1;
+//     void reveal(char **args, int argc) {
+//     int show_all = 0;
+//     int show_long = 0;
+//     char *target_dir = ".";
+//     int optind = 1;
 
-    // Parse flags
-    while (optind < argc && args[optind][0] == '-') {
-        for (int j = 1; args[optind][j] != '\0'; ++j) {
-            if (args[optind][j] == 'a') {
-                show_all = 1;
-            } else if (args[optind][j] == 'l') {
-                show_long = 1;
-            } else {
-                printf("Error: Invalid flag '%c'\n", args[optind][j]);
-                return;
-            }
-        }
-        optind++;
-    }
+//     // Parse flags
+//     while (optind < argc && args[optind][0] == '-') {
+//         for (int j = 1; args[optind][j] != '\0'; ++j) {
+//             if (args[optind][j] == 'a') {
+//                 show_all = 1;
+//             } else if (args[optind][j] == 'l') {
+//                 show_long = 1;
+//             } else {
+//                 printf("Error: Invalid flag '%c'\n", args[optind][j]);
+//                 return;
+//             }
+//         }
+//         optind++;
+//     }
 
-    if (optind < argc) {
-        target_dir = args[optind];
-    }
+//     if (optind < argc) {
+//         target_dir = args[optind];
+//     }
 
-    // Handle special symbols
-    if (strcmp(target_dir, ".") == 0) {
-        target_dir = getcwd(NULL, 0); // Current working directory
-    } else if (strcmp(target_dir, "..") == 0) {
-        char *cwd = getcwd(NULL, 0);
-        target_dir = dirname(cwd); // Get the parent directory
-    } else if (target_dir[0] == '~') {
-        const char *home = getenv("HOME");
-        char fullpath[PATH_MAX];
-        snprintf(fullpath, sizeof(fullpath), "%s%s", home, target_dir + 1);
-        target_dir = strdup(fullpath); // Allocate memory for the path
-    } else if (strcmp(target_dir, "-") == 0) {
-        target_dir = prev_dir; // Previous directory handling
-    }
+//     // Handle special symbols
+//     if (strcmp(target_dir, ".") == 0) {
+//         target_dir = getcwd(NULL, 0); // Current working directory
+//     } else if (strcmp(target_dir, "..") == 0) {
+//         char *cwd = getcwd(NULL, 0);
+//         target_dir = dirname(cwd); // Get the parent directory
+//     } else if (target_dir[0] == '~') {
+//         const char *home = getenv("HOME");
+//         char fullpath[PATH_MAX];
+//         snprintf(fullpath, sizeof(fullpath), "%s%s", home, target_dir + 1);
+//         target_dir = strdup(fullpath); // Allocate memory for the path
+//     } else if (strcmp(target_dir, "-") == 0) {
+//         target_dir = prev_dir; // Previous directory handling
+//     }
 
-    DIR *dir = opendir(target_dir);
-    if (dir == NULL) {
-        perror("opendir");
-        return;
-    }
+//     DIR *dir = opendir(target_dir);
+//     if (dir == NULL) {
+//         perror("opendir");
+//         return;
+//     }
 
-    struct dirent *entry;
-    char *entries[1024];
-    int count = 0;
+//     struct dirent *entry;
+//     char **entries = malloc(sizeof(char *) * 1024);
+//     if (!entries) {
+//         perror("malloc failed");
+//         return;
+//     }
 
-    // Read and store directory entries
-    while ((entry = readdir(dir)) != NULL) {
-        if (!show_all && entry->d_name[0] == '.') {
-            continue;
-        }
-        entries[count++] = strdup(entry->d_name);
-    }
-    closedir(dir);
+//     int count = 0;
 
-    // Sort entries lexicographically
-    qsort(entries, count, sizeof(char*), (int (*)(const void*, const void*)) strcmp);
+//     // Read and store directory entries
+//     while ((entry = readdir(dir)) != NULL) {
+//         if (!show_all && entry->d_name[0] == '.') {
+//             continue;
+//         }
+//         entries[count++] = strdup(entry->d_name);
+//     }
+//     closedir(dir);
 
-    // Print entries
-    for (int i = 0; i < count; ++i) {
-        if (show_long) {
-            print_file_details(target_dir, entries[i]);
-        } else {
-            printf("%s\n", entries[i]);
-        }
-        free(entries[i]);
-    }
+//     // Sort entries lexicographically
+//     qsort(entries, count, sizeof(char*), (int (*)(const void*, const void*)) strcmp);
+
+//     // Print entries
+//     for (int i = 0; i < count; ++i) {
+//         if (show_long) {
+//             print_file_details(target_dir, entries[i]);
+//         } else {
+//             printf("%s\n", entries[i]);
+//         }
+//         free(entries[i]);
+//     }
     
-    // Free any dynamically allocated memory for target_dir 
-    if (target_dir != args[optind]) {
-        free(target_dir);
-    }
-    free(entries);
-}
+//     // Free any dynamically allocated memory for target_dir 
+//     if (target_dir != args[optind]) {
+//         free(target_dir);
+
+
+//     }
+
+//     free(entries);
+// }

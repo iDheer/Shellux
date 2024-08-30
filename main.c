@@ -11,17 +11,24 @@ int main() {
     initialize_shell_home_directory(); 
     char command[4096];
 
-    init_log();
+    init_log();  // Initialize and load the log at startup
 
     while (1) {
         display_prompt();  
         if (fgets(command, sizeof(command), stdin) != NULL) { 
-            if (strcmp(command, "exit\n") == 0) { // slef defined exit command
+            // Remove trailing newline character if present
+
+            command[strcspn(command, "\n")] = 0;
+
+            if (strcmp(command, "exit") == 0) { // self defined exit command
                 break;
             }
-            process_command(command);  
+            
+            add_to_log(command);  // Log the command after processing
+            process_command(command);  // Process the command first
+            
         }
     }
-    cleanup_log();
+    cleanup_log();  // Clean up and save the log at shutdown
     return 0;
 }
