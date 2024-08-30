@@ -138,3 +138,12 @@ Initial log_entry: After the first snprintf, log_entry is "reveal".
 After 1st iteration (i = 1): log_entry becomes "reveal test".
 After 2nd iteration (i = 2): log_entry becomes "reveal test -a".
 After 3rd iteration (i = 3): log_entry becomes "reveal test -a -l".
+
+process_id: The ID of the process.
+pgrp: The process group ID.
+session: The session ID.
+tty_nr: The terminal number.
+tpgid: The ID of the foreground process group.
+comm: The name of the executable.
+state: The current state of the process (e.g., running, sleeping).
+vsize: The virtual memory size of the process.

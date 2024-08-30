@@ -15,6 +15,7 @@
 #include<fcntl.h>
 #include <sys/stat.h>
 #include <libgen.h>
+#include <ctype.h>
 
 #define LOG_FILE_PATH "command_log.txt"
 #define MAX_LOG_SIZE 15
@@ -154,18 +155,25 @@ int log_count = 0;
         fclose(log_file);
     }
 
-   void save_log() {
-    FILE *log_file = fopen(LOG_FILE_PATH, "w");
-    if (!log_file) return;
+    void save_log() {
+        FILE *log_file = fopen(LOG_FILE_PATH, "w");
+        if (!log_file) {
+            perror("Failed to open log file");
+            return;
+        }
 
-    for (int i = 0; i < log_count; ++i) {
-        fprintf(log_file, "%s\n", command_log[i]);
-        free(command_log[i]);  // Freeing here
-        command_log[i] = NULL;  // Ensuring pointer is nullified after freeing
+        for (int i = 0; i < log_count; ++i) {
+            fprintf(log_file, "%s\n", command_log[i]);
+            printf("wrote %s\n", command_log[i]);
+            free(command_log[i]);  // Freeing here
+            command_log[i] = NULL;  // Ensuring pointer is nullified after freeing
+        }
+
+        log_count = 0;  // Reset log count after saving
+        fflush(log_file);  // Ensure all data is written to the file
+        fclose(log_file);
     }
-    log_count = 0;  // Reset log count after saving
-    fclose(log_file);
-    }
+
 
     // Initialize the log at startup
     void init_log() {
@@ -254,138 +262,254 @@ int log_count = 0;
     }
 
 
-//     void print_file_details(const char *path, const char *filename) {
-//     struct stat fileStat;
-//     char fullpath[PATH_MAX];
-//     snprintf(fullpath, sizeof(fullpath), "%s/%s", path, filename);
-
-//     if (stat(fullpath, &fileStat) == -1) {
-//         perror("stat");
-//         return;
-//     }
-
-//     // Print file type and permissions
-//     printf((S_ISDIR(fileStat.st_mode)) ? "d" : "-");
-//     printf((fileStat.st_mode & S_IRUSR) ? "r" : "-");
-//     printf((fileStat.st_mode & S_IWUSR) ? "w" : "-");
-//     printf((fileStat.st_mode & S_IXUSR) ? "x" : "-");
-//     printf((fileStat.st_mode & S_IRGRP) ? "r" : "-");
-//     printf((fileStat.st_mode & S_IWGRP) ? "w" : "-");
-//     printf((fileStat.st_mode & S_IXGRP) ? "x" : "-");
-//     printf((fileStat.st_mode & S_IROTH) ? "r" : "-");
-//     printf((fileStat.st_mode & S_IWOTH) ? "w" : "-");
-//     printf((fileStat.st_mode & S_IXOTH) ? "x" : "-");
-
-//     // Print number of links
-//     printf(" %lu", fileStat.st_nlink);
-
-//     // Print user and group name
-//     struct passwd *pwd = getpwuid(fileStat.st_uid);
-//     struct group *grp = getgrgid(fileStat.st_gid);
-//     printf(" %s %s", pwd ? pwd->pw_name : "???", grp ? grp->gr_name : "???");
-
-//     // Print file size
-//     printf(" %5ld", fileStat.st_size);
-
-//     // Print last modification time
-//     char timebuff[80];
-//     strftime(timebuff, sizeof(timebuff), "%b %d %H:%M", localtime(&fileStat.st_mtime));
-//     printf(" %s", timebuff);
-
-//     // Print file name with color coding
-//     if (S_ISDIR(fileStat.st_mode)) {
-//         printf(" \033[1;34m%s\033[0m\n", filename); // Blue for directories
-//     } else if (fileStat.st_mode & S_IXUSR) {
-//         printf(" \033[1;32m%s\033[0m\n", filename); // Green for executables
-//     } else {
-//         printf(" \033[0;37m%s\033[0m\n", filename); // White for regular files
-//     }
-// }
 
 
-//     void reveal(char **args, int argc) {
-//     int show_all = 0;
-//     int show_long = 0;
-//     char *target_dir = ".";
-//     int optind = 1;
+// Function to compare strings for qsort
+int compare(const void *a, const void *b) {
+    return strcmp(*(const char **)a, *(const char **)b);
+}
 
-//     // Parse flags
-//     while (optind < argc && args[optind][0] == '-') {
-//         for (int j = 1; args[optind][j] != '\0'; ++j) {
-//             if (args[optind][j] == 'a') {
-//                 show_all = 1;
-//             } else if (args[optind][j] == 'l') {
-//                 show_long = 1;
-//             } else {
-//                 printf("Error: Invalid flag '%c'\n", args[optind][j]);
-//                 return;
-//             }
-//         }
-//         optind++;
-//     }
+// Function to print file details
+void print_file_details(const char *path, const char *filename) {
+    struct stat fileStat;
+    char fullpath[PATH_MAX];
+    snprintf(fullpath, sizeof(fullpath), "%s/%s", path, filename);
 
-//     if (optind < argc) {
-//         target_dir = args[optind];
-//     }
+    if (stat(fullpath, &fileStat) == -1) {
+        perror("stat");
+        return;
+    }
 
-//     // Handle special symbols
-//     if (strcmp(target_dir, ".") == 0) {
-//         target_dir = getcwd(NULL, 0); // Current working directory
-//     } else if (strcmp(target_dir, "..") == 0) {
-//         char *cwd = getcwd(NULL, 0);
-//         target_dir = dirname(cwd); // Get the parent directory
-//     } else if (target_dir[0] == '~') {
-//         const char *home = getenv("HOME");
-//         char fullpath[PATH_MAX];
-//         snprintf(fullpath, sizeof(fullpath), "%s%s", home, target_dir + 1);
-//         target_dir = strdup(fullpath); // Allocate memory for the path
-//     } else if (strcmp(target_dir, "-") == 0) {
-//         target_dir = prev_dir; // Previous directory handling
-//     }
+    // Print file type and permissions
+    printf((S_ISDIR(fileStat.st_mode)) ? "d" : "-");
+    printf((fileStat.st_mode & S_IRUSR) ? "r" : "-");
+    printf((fileStat.st_mode & S_IWUSR) ? "w" : "-");
+    printf((fileStat.st_mode & S_IXUSR) ? "x" : "-");
+    printf((fileStat.st_mode & S_IRGRP) ? "r" : "-");
+    printf((fileStat.st_mode & S_IWGRP) ? "w" : "-");
+    printf((fileStat.st_mode & S_IXGRP) ? "x" : "-");
+    printf((fileStat.st_mode & S_IROTH) ? "r" : "-");
+    printf((fileStat.st_mode & S_IWOTH) ? "w" : "-");
+    printf((fileStat.st_mode & S_IXOTH) ? "x" : "-");
 
-//     DIR *dir = opendir(target_dir);
-//     if (dir == NULL) {
-//         perror("opendir");
-//         return;
-//     }
+    // Print number of links
+    printf(" %lu", fileStat.st_nlink);
 
-//     struct dirent *entry;
-//     char **entries = malloc(sizeof(char *) * 1024);
-//     if (!entries) {
-//         perror("malloc failed");
-//         return;
-//     }
+    // Print user and group name
+    struct passwd *pwd = getpwuid(fileStat.st_uid);
+    struct group *grp = getgrgid(fileStat.st_gid);
+    printf(" %s %s", pwd ? pwd->pw_name : "???", grp ? grp->gr_name : "???");
 
-//     int count = 0;
+    // Print file size
+    printf(" %5ld", fileStat.st_size);
 
-//     // Read and store directory entries
-//     while ((entry = readdir(dir)) != NULL) {
-//         if (!show_all && entry->d_name[0] == '.') {
-//             continue;
-//         }
-//         entries[count++] = strdup(entry->d_name);
-//     }
-//     closedir(dir);
+    // Print last modification time
+    char timebuff[80];
+    strftime(timebuff, sizeof(timebuff), "%b %d %H:%M", localtime(&fileStat.st_mtime));
+    printf(" %s", timebuff);
 
-//     // Sort entries lexicographically
-//     qsort(entries, count, sizeof(char*), (int (*)(const void*, const void*)) strcmp);
+    // Print file name with color coding
+    if (S_ISDIR(fileStat.st_mode)) {
+        printf(" \033[1;34m%s\033[0m\n", filename); // Blue for directories
+    } else if (fileStat.st_mode & S_IXUSR) {
+        printf(" \033[1;32m%s\033[0m\n", filename); // Green for executables
+    } else {
+        printf(" \033[0;37m%s\033[0m\n", filename); // White for regular files
+    }
+}
 
-//     // Print entries
-//     for (int i = 0; i < count; ++i) {
-//         if (show_long) {
-//             print_file_details(target_dir, entries[i]);
-//         } else {
-//             printf("%s\n", entries[i]);
-//         }
-//         free(entries[i]);
-//     }
-    
-//     // Free any dynamically allocated memory for target_dir 
-//     if (target_dir != args[optind]) {
-//         free(target_dir);
+// Function to reveal directory contents
+void reveal(char **args, int argc) {
+    int optind = 1;
+    int show_all = 0;
+    int show_long = 0;
+    char *target_dir = ".";
+
+    // Parse flags
+    while (optind < argc && args[optind][0] == '-') {
+        for (int j = 1; args[optind][j] != '\0'; ++j) {
+            if (args[optind][j] == 'a') {
+                show_all = 1;
+            } else if (args[optind][j] == 'l') {
+                show_long = 1;
+            } else {
+                printf("Error: Invalid flag '%c'\n", args[optind][j]);
+                return;
+            }
+        }
+        optind++;
+    }
+
+    if (optind < argc) {
+        target_dir = args[optind]; // Get target directory
+    }
+
+    // Handle special symbols
+    if (strcmp(target_dir, ".") == 0) {
+        target_dir = getcwd(NULL, 0); // Current working directory
+    } else if (strcmp(target_dir, "..") == 0) {
+        char *cwd = getcwd(NULL, 0);
+        target_dir = dirname(cwd); // Get the parent directory
+    } else if (target_dir[0] == '~' && target_dir[1] != '/') {
+        target_dir = shell_home_directory; // Shell's home directory
+    } else if (target_dir[0] == '~' && target_dir[1] == '/') {
+        char *username = get_username();  
+        char *offset = target_dir + 2;    
+        size_t final_dir_size = strlen("/home/") + strlen(username) + strlen("/") + strlen(offset) + 1;
+        char *final_dir = malloc(final_dir_size);
+        if (final_dir == NULL) {
+            perror("malloc failed");
+            return;
+        }
+        snprintf(final_dir, final_dir_size, "/home/%s/%s", username, offset);
+        target_dir = final_dir;
+    } else if (strcmp(target_dir, "-") == 0) {
+        if (strlen(prev_dir) == 0) {
+            printf("Error: No previous directory to reveal.\n");
+            return;
+        }
+        target_dir = prev_dir; // Previous directory handling
+    } else {
+        printf("Error: Invalid directory '%s'\n", target_dir);
+        return;        
+    }
+
+    DIR *dir = opendir(target_dir);
+    if (dir == NULL) {
+        perror("opendir");
+        free(target_dir);
+        return;
+    }
+
+    struct dirent *entry;
+    char **entries = malloc(sizeof(char *) * 1000);
+    if (!entries) {
+        perror("malloc failed");
+        closedir(dir);
+        free(target_dir);
+        return;
+    }
+
+    int count = 0;
+
+    // Read and store directory entries
+    while ((entry = readdir(dir)) != NULL) {
+        if (!show_all && entry->d_name[0] == '.') {
+            continue;
+        }
+        entries[count++] = strdup(entry->d_name);
+    }
+    closedir(dir);
+
+    // Sort entries lexicographically
+    qsort(entries, count, sizeof(char*), compare);
+
+    // Print entries with color coding regardless of flags
+    for (int i = 0; i < count; ++i) {
+        if (show_long) {
+            print_file_details(target_dir, entries[i]);
+        } else {
+            // Always apply color coding
+            struct stat fileStat;
+            char fullpath[PATH_MAX];
+            snprintf(fullpath, sizeof(fullpath), "%s/%s", target_dir, entries[i]);
+            stat(fullpath, &fileStat); // Get file stats for color coding
+
+            // Print file name with color coding
+            if (S_ISDIR(fileStat.st_mode)) {
+                printf("\033[1;34m%s\033[0m\n", entries[i]); // Blue for directories
+            } else if (fileStat.st_mode & S_IXUSR) {
+                printf("\033[1;32m%s\033[0m\n", entries[i]); // Green for executables
+            } else {
+                printf("\033[0;37m%s\033[0m\n", entries[i]); // White for regular files
+            }
+        }
+        free(entries[i]);
+    }
+
+    // Free dynamically allocated memory for target_dir
+    if (target_dir != args[optind]) {
+        free(target_dir);
+    }
+
+    free(entries);
+}
 
 
-//     }
 
-//     free(entries);
-// }
+
+
+
+
+
+
+
+
+void proclore(char **args, int argc) {
+    char proc_path[PATH_MAX];
+    char buffer[1024];
+    char stat_path[PATH_MAX];
+    int pid = getpid();  // Default to the current shell process if no PID is provided
+
+    if (argc == 2) {
+        pid = atoi(args[1]);
+    }
+
+    // Construct the /proc/[pid] path
+    snprintf(proc_path, sizeof(proc_path), "/proc/%d", pid);
+
+    if (snprintf(stat_path, sizeof(stat_path), "%s/stat", proc_path) >= sizeof(stat_path)) {
+        fprintf(stderr, "Path too long to append /stat\n");
+        return;
+    }
+
+    // Open and read the /proc/[pid]/stat file
+    FILE *stat_file = fopen(stat_path, "r");
+    if (stat_file == NULL) {
+        perror("fopen");
+        return;
+    }
+
+    if (fgets(buffer, sizeof(buffer), stat_file) != NULL) {
+        int process_id, pgrp, session, tty_nr, tpgid;
+        char comm[256], state;
+        unsigned long vsize;
+
+        sscanf(buffer, "%d %s %c %*d %d %d %d %d %*u %*u %*u %*u %*u %*u %*u %*u %*u %*u %*u %*u %lu",
+               &process_id, comm, &state, &pgrp, &session, &tty_nr, &tpgid, &vsize);
+
+        // Determine if the process is foreground/background
+        char *status_str = "Unknown";
+        if (session == pgrp && tty_nr != 0) {
+            status_str = (tpgid == pid) ? "R+" : "R";
+        } else {
+            status_str = (state == 'S') ? "S" : "R";
+        }
+
+        // Print the process information
+        printf("pid : %d\n", process_id);
+        printf("process status : %s\n", status_str);
+        printf("Process Group : %d\n", pgrp);
+        printf("Virtual memory : %lu\n", vsize);
+
+        // Get the executable path
+        char exe_path[PATH_MAX];
+        if (snprintf(exe_path, sizeof(exe_path), "%s/exe", proc_path) >= sizeof(exe_path)) {
+            fprintf(stderr, "Path too long to append /exe\n");
+            fclose(stat_file);
+            return;
+        }
+
+        ssize_t len = readlink(exe_path, buffer, sizeof(buffer) - 1);
+        if (len != -1) {
+            buffer[len] = '\0';
+            printf("executable path : %s\n", buffer);
+        } else {
+            printf("executable path : unknown\n");
+        }
+    } else {
+        printf("Failed to read process information.\n");
+    }
+
+    fclose(stat_file);
+}
