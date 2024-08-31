@@ -103,7 +103,10 @@ void execute_command(char *cmd) {
     } else if (strcmp(args[0], "proclore") == 0) {
         proclore(args, argc);
         return;
-    } 
+    } else if (strcmp(args[0], "seek") == 0) {
+        seek(args, argc);
+        return;
+    }
 
     // Execute the command using fork and exec
     pid_t pid = fork();

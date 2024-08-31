@@ -3,7 +3,6 @@
 #include <unistd.h>
 #include <string.h>
 #include <limits.h>
-#include <linux/limits.h> // For PATH_MAX
 #include "commands.h"
 #include "utils.h"
 #include <dirent.h>
@@ -16,9 +15,14 @@
 #include <sys/stat.h>
 #include <libgen.h>
 #include <ctype.h>
+#include <limits.h> // For PATH_MAX again 
+#include <linux/limits.h> // For PATH_MAX
 
 #define LOG_FILE_PATH "command_log.txt"
 #define MAX_LOG_SIZE 15
+#define MAX_PATH 4096
+#define MAX_COLORED_PATH (5016)  // Extra space for color codes
+#define MAX_RESULTS 1000
 
 static char prev_dir[PATH_MAX] = ""; // Global variable for previous directory
 char *command_log[MAX_LOG_SIZE];
@@ -464,7 +468,7 @@ void proclore(char **args, int argc) {
     }
 
     // Open and read the /proc/[pid]/stat file
-    FILE *stat_file = fopen(stat_path, "r");
+    FILE *stat_file = fopen(proc_path, "r"); // this was eaelier stat_path, but that was not working. 
     if (stat_file == NULL) {
         perror("fopen");
         return;
@@ -475,7 +479,7 @@ void proclore(char **args, int argc) {
         char comm[256], state;
         unsigned long vsize;
 
-        sscanf(buffer, "%d %s %c %*d %d %d %d %d %*u %*u %*u %*u %*u %*u %*u %*u %*u %*u %*u %*u %lu",
+        sscanf(buffer, "%d %s %c %*d %d %d %d %d %*u %*u %*u %*u %*u %*u %*u %*u %*u %*u %*u %*u %*u %*u %lu",
                &process_id, comm, &state, &pgrp, &session, &tty_nr, &tpgid, &vsize);
 
         // Determine if the process is foreground/background
@@ -512,4 +516,169 @@ void proclore(char **args, int argc) {
     }
 
     fclose(stat_file);
+}
+
+void search_directory(const char *directory, const char *search_term, char results[MAX_RESULTS][MAX_PATH], int *result_count) {
+    DIR *dir;
+    struct dirent *entry;
+    struct stat statbuf;
+    char path[MAX_PATH];
+
+    if ((dir = opendir(directory)) == NULL) {
+        perror("opendir");
+        return;
+    }
+
+    while ((entry = readdir(dir)) != NULL) {
+        snprintf(path, sizeof(path), "%s/%s", directory, entry->d_name);
+
+        // Check if it's a directory or file and get info about it
+        if (stat(path, &statbuf) == -1) {
+            perror("stat");
+            continue;
+        }
+
+        // Skip the "." and ".." directories
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
+
+        // Calculate the max length available for the path considering the color codes
+        size_t path_len = strlen(path);
+        size_t prefix_suffix_len;
+        size_t available_space;
+
+        if (S_ISDIR(statbuf.st_mode)) {
+            prefix_suffix_len = strlen("\033[1;34m") + strlen("\033[0m");
+        } else {
+            prefix_suffix_len = strlen("\033[1;32m") + strlen("\033[0m");
+        }
+
+        available_space = MAX_PATH - prefix_suffix_len - 1;  // -1 for the null terminator
+
+        if (path_len > available_space) {
+            path[available_space] = '\0';
+        }
+
+        // Using snprintf safely knowing the path length
+        // if (S_ISDIR(statbuf.st_mode)) {
+        //     snprintf(results[(*result_count)++], MAX_PATH, "\033[1;34m%s\033[0m", path); // Blue for directories
+        // } else {
+        //     snprintf(results[(*result_count)++], MAX_PATH, "\033[1;32m%s\033[0m", path); // Green for files
+        // }
+
+        if (S_ISDIR(statbuf.st_mode)) {
+            add_colored_path(results[*result_count], path, "\033[1;34m");  // Blue for directories
+        } else {
+            add_colored_path(results[*result_count], path, "\033[1;32m");  // Green for files
+        }
+        (*result_count)++;
+
+        // Stop if we've hit the maximum number of results
+        if (*result_count >= MAX_RESULTS) {
+            fprintf(stderr, "Warning: Maximum number of results reached.\n");
+            break;
+        }
+    }
+
+    closedir(dir);
+}
+
+void add_colored_path(char *dest, const char *path, const char *color_code) {
+    size_t remaining = MAX_PATH;
+    int written = snprintf(dest, remaining, "%s", color_code);
+    if (written > 0) {
+        dest += written;
+        remaining -= written;
+    }
+
+    if (remaining > 0) {
+        size_t path_len = strlen(path);
+        if (path_len > remaining - 5) {  // -5 for "...\033[0m"
+            path_len = remaining - 5;
+            strncpy(dest, path, path_len - 3);
+            strcpy(dest + path_len - 3, "...\033[0m");
+        } else {
+            snprintf(dest, remaining, "%s\033[0m", path);
+        }
+    }
+}
+
+void seek(char **args, int argc) {
+    int d_flag = 0, f_flag = 0, e_flag = 0;
+    char *target_name = NULL;
+    char *target_dir = "."; // Default to current directory if not specified
+
+    // Parse flags and arguments
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(args[i], "-d") == 0) {
+            d_flag = 1;
+        } else if (strcmp(args[i], "-f") == 0) {
+            f_flag = 1;
+        } else if (strcmp(args[i], "-e") == 0) {
+            e_flag = 1;
+        } else if (target_name == NULL) {
+            target_name = args[i];
+        } else {
+            target_dir = args[i];
+        }
+    }
+
+    // Validate flags
+    if (d_flag && f_flag) {
+        printf("Invalid flags! Cannot use both -d and -f.\n");
+        return;
+    }
+
+    // If no target name is provided
+    if (target_name == NULL) {
+        printf("No target name provided!\n");
+        return;
+    }
+
+    // Recursively search the directory tree
+    char results[MAX_RESULTS][MAX_PATH];
+    int result_count = 0;
+
+    search_directory(target_dir, target_name, results, &result_count);
+
+    // Handle the -e flag
+    if (e_flag && result_count == 1) {
+        struct stat sb;
+        if (stat(results[0], &sb) == -1) {
+            printf("Missing permissions for task!\n");
+            return;
+        }
+
+        if (S_ISDIR(sb.st_mode)) {
+            if (chdir(results[0]) == -1) {
+                printf("Missing permissions for task!\n");
+            } else {
+                char cwd[MAX_PATH];
+                getcwd(cwd, sizeof(cwd));
+                printf("%s\n", cwd);
+            }
+        } else if (S_ISREG(sb.st_mode)) {
+            FILE *file = fopen(results[0], "r");
+            if (!file) {
+                printf("Missing permissions for task!\n");
+            } else {
+                char ch;
+                while ((ch = fgetc(file)) != EOF) {
+                    putchar(ch);
+                }
+                fclose(file);
+            }
+        }
+        return;
+    }
+
+    // Print results
+    if (result_count == 0) {
+        printf("No match found!\n");
+    } else {
+        for (int i = 0; i < result_count; i++) {
+            printf("%s\n", results[i]);
+        }
+    }
 }

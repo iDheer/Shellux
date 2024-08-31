@@ -8,7 +8,7 @@
 #include "prompt.h"
 
 void display_prompt() {
-
+    
     char cwd[4096];
     getcwd(cwd, sizeof(cwd)); // Get the current working directory and store it in the cwd buffer
 
