@@ -14,6 +14,6 @@ void proclore(char **args, int argc);
 void add_to_log(const char *command);
 void log_command(char **args, int argc); 
 void add_colored_path(char *dest, const char *path, const char *color_code);
-void search_directory(const char *directory, const char *search_term, char results[MAX_RESULTS][MAX_PATH], int *result_count);
+void search_directory(const char *directory, const char *search_term, char results[MAX_RESULTS][MAX_PATH], int *result_count, int d_flag, int f_flag);
 
 #endif 

@@ -518,7 +518,66 @@ void proclore(char **args, int argc) {
     fclose(stat_file);
 }
 
-void search_directory(const char *directory, const char *search_term, char results[MAX_RESULTS][MAX_PATH], int *result_count) {
+// void search_directory(const char *directory, const char *search_term, char results[MAX_RESULTS][MAX_PATH], int *result_count) {
+//     DIR *dir;
+//     struct dirent *entry;
+//     struct stat statbuf;
+//     char path[MAX_PATH];
+
+//     if ((dir = opendir(directory)) == NULL) {
+//         perror("opendir");
+//         return;
+//     }
+
+//     while ((entry = readdir(dir)) != NULL) {
+//         snprintf(path, sizeof(path), "%s/%s", directory, entry->d_name);
+
+//         // Check if it's a directory or file and get info about it
+//         if (stat(path, &statbuf) == -1) {
+//             perror("stat");
+//             continue;
+//         }
+
+//         // Skip the "." and ".." directories
+//         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+//             continue;
+//         }
+
+//         // Calculate the max length available for the path considering the color codes
+//         size_t path_len = strlen(path);
+//         size_t prefix_suffix_len;
+//         size_t available_space;
+
+//         if (S_ISDIR(statbuf.st_mode)) {
+//             prefix_suffix_len = strlen("\033[1;34m") + strlen("\033[0m");
+//         } else {
+//             prefix_suffix_len = strlen("\033[1;32m") + strlen("\033[0m");
+//         }
+
+//         available_space = MAX_PATH - prefix_suffix_len - 1;  // -1 for the null terminator
+
+//         if (path_len > available_space) {
+//             path[available_space] = '\0';
+//         }
+
+//         if (S_ISDIR(statbuf.st_mode)) {
+//             add_colored_path(results[*result_count], path, "\033[1;34m");  // Blue for directories
+//         } else {
+//             add_colored_path(results[*result_count], path, "\033[1;32m");  // Green for files
+//         }
+//         (*result_count)++;
+
+//         // Stop if we've hit the maximum number of results
+//         if (*result_count >= MAX_RESULTS) {
+//             fprintf(stderr, "Warning: Maximum number of results reached.\n");
+//             break;
+//         }
+//     }
+
+//     closedir(dir);
+// }
+
+void search_directory(const char *directory, const char *search_term, char results[MAX_RESULTS][MAX_PATH], int *result_count, int d_flag, int f_flag) {
     DIR *dir;
     struct dirent *entry;
     struct stat statbuf;
@@ -532,7 +591,6 @@ void search_directory(const char *directory, const char *search_term, char resul
     while ((entry = readdir(dir)) != NULL) {
         snprintf(path, sizeof(path), "%s/%s", directory, entry->d_name);
 
-        // Check if it's a directory or file and get info about it
         if (stat(path, &statbuf) == -1) {
             perror("stat");
             continue;
@@ -543,34 +601,21 @@ void search_directory(const char *directory, const char *search_term, char resul
             continue;
         }
 
-        // Calculate the max length available for the path considering the color codes
-        size_t path_len = strlen(path);
-        size_t prefix_suffix_len;
-        size_t available_space;
-
-        if (S_ISDIR(statbuf.st_mode)) {
-            prefix_suffix_len = strlen("\033[1;34m") + strlen("\033[0m");
-        } else {
-            prefix_suffix_len = strlen("\033[1;32m") + strlen("\033[0m");
+        // Check if the entry matches the target name
+        if (strcmp(entry->d_name, search_term) != 0) {
+            continue; // Skip if the name does not match
         }
 
-        available_space = MAX_PATH - prefix_suffix_len - 1;  // -1 for the null terminator
-
-        if (path_len > available_space) {
-            path[available_space] = '\0';
+        // Skip files or directories based on the flags
+        if ((d_flag && !S_ISDIR(statbuf.st_mode)) || (f_flag && !S_ISREG(statbuf.st_mode))) {
+            continue; // Skip if it doesn't match the requested type
         }
 
-        // Using snprintf safely knowing the path length
-        // if (S_ISDIR(statbuf.st_mode)) {
-        //     snprintf(results[(*result_count)++], MAX_PATH, "\033[1;34m%s\033[0m", path); // Blue for directories
-        // } else {
-        //     snprintf(results[(*result_count)++], MAX_PATH, "\033[1;32m%s\033[0m", path); // Green for files
-        // }
-
+        // Handle coloring and result storage as before...
         if (S_ISDIR(statbuf.st_mode)) {
-            add_colored_path(results[*result_count], path, "\033[1;34m");  // Blue for directories
+            add_colored_path(results[*result_count], path, "\033[1;34m"); // Blue for directories
         } else {
-            add_colored_path(results[*result_count], path, "\033[1;32m");  // Green for files
+            add_colored_path(results[*result_count], path, "\033[1;32m"); // Green for files
         }
         (*result_count)++;
 
@@ -640,7 +685,7 @@ void seek(char **args, int argc) {
     char results[MAX_RESULTS][MAX_PATH];
     int result_count = 0;
 
-    search_directory(target_dir, target_name, results, &result_count);
+    search_directory(target_dir, target_name, results, &result_count, d_flag, f_flag);
 
     // Handle the -e flag
     if (e_flag && result_count == 1) {
