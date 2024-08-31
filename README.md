@@ -55,21 +55,15 @@ The `prompt.c` file contains the implementation of the command prompt displayed 
 
 The primary function in this file is `display_prompt()`, which constructs and displays the command prompt. The following steps are performed in this function:
 
-1. **Get Current Working Directory**: 
-   - The shell retrieves the current working directory using the `getcwd` function and stores it in a buffer for later use.
-
-   ```c
-   char cwd[4096];
-   getcwd(cwd, sizeof(cwd));
-
-```c
 
 ## commands.c
 
 ### Overview
+
 The `commands.c` file contains the core functionalities of the custom shell, including command execution, process management, and environment handling. This file serves as a bridge between user inputs and the system's command execution capabilities, allowing for both foreground and background processes.
 
 ### Key Functionalities
+
 - **Shell Home Directory Initialization**: Retrieves and stores the shell's home directory at startup.
 - **User and System Information**: Functions to obtain the current username and system name.
 - **Command Execution**: Manages the execution of commands, both built-in and external, with proper handling of command-line arguments.
@@ -77,46 +71,47 @@ The `commands.c` file contains the core functionalities of the custom shell, inc
 
 ### Functions
 
-1. **`void initialize_shell_home_directory()`**:
-   - Initializes the global variable `shell_home_directory` with the current working directory using `getcwd`.
-   - Handles errors during initialization by exiting with an error message.
+- **`void initialize_shell_home_directory()`**:
+  - Initializes the global variable `shell_home_directory` with the current working directory using `getcwd`.
+  - Handles errors during initialization by exiting with an error message.
 
-2. **`char* get_username()`**:
-   - Retrieves the current user's username using `getpwuid`.
-   - Returns "unknown" if the username cannot be retrieved.
+- **`char* get_username()`**:
+  - Retrieves the current user's username using `getpwuid`.
+  - Returns "unknown" if the username cannot be retrieved.
 
-3. **`char* get_system_name()`**:
-   - Retrieves the system's name using `uname`.
-   - Returns the node name of the system.
+- **`char* get_system_name()`**:
+  - Retrieves the system's name using `uname`.
+  - Returns the node name of the system.
 
-4. **`int is_home_directory(const char *cwd)`**:
-   - Checks if the current working directory (`cwd`) matches the shell's home directory.
-   - Returns `1` if true; otherwise, returns `0`.
+- **`int is_home_directory(const char *cwd)`**:
+  - Checks if the current working directory (`cwd`) matches the shell's home directory.
+  - Returns `1` if true; otherwise, returns `0`.
 
-5. **`void execute_command(char *cmd)`**:
-   - Tokenizes the input command string into arguments.
-   - Logs the command for tracking.
-   - Handles built-in commands such as `hop`, `reveal`, `log`, and `proclore`.
-   - Executes external commands using `fork` and `execvp`.
-   - Measures execution time for foreground processes and displays it if the process takes more than 2 seconds.
+- **`void execute_command(char *cmd)`**:
+  - Tokenizes the input command string into arguments.
+  - Logs the command for tracking.
+  - Handles built-in commands such as `hop`, `reveal`, `log`, and `proclore`.
+  - Executes external commands using `fork` and `execvp`.
+  - Measures execution time for foreground processes and displays it if the process takes more than 2 seconds.
 
-6. **`void process_command(char *input)`**:
-   - Processes multiple commands separated by semicolons (`;`).
-   - Supports background execution using the `&` symbol.
-   - Manages the execution of each command, determining if it should run in the foreground or background.
+- **`void process_command(char *input)`**:
+  - Processes multiple commands separated by semicolons (`;`).
+  - Supports background execution using the `&` symbol.
+  - Manages the execution of each command, determining if it should run in the foreground or background.
 
 ### Background Process Management
+
 - Up to `MAX_BG_PROCESSES` (1024) background processes can be tracked.
 - The arrays `bg_pids` and `bg_commands` store the PIDs and commands of background processes.
 - Background processes are executed by forking a new process and allowing the parent to continue without waiting.
 
 ### Assumptions
+
 - The user must type `exit` to terminate the shell; this will gracefully shut down the program and log the commands.
 - All commands are expected to be entered in a format that adheres to standard shell syntax.
 - Proper permissions are required for executing certain commands and accessing system resources.
 
 ### Example Usage
-Here is an example of how the shell prompt might behave:
 
 ```bash
 <IneshDheer@MyPC:~> ls -la &
@@ -128,149 +123,156 @@ Hello, World!
 
 ## utils.c
 
-### Overview
-The `utils.c` file provides various utility functions that support the functionality of the custom shell. This includes functions for user and system information retrieval, as well as handling string manipulations that are crucial for command processing and execution.
+The `utils.c` module provides essential utility functions that support the custom shell's functionality. This includes functions for retrieving user and system information, handling string manipulations, and managing error reporting. The utilities are crucial for command processing and execution within the shell environment.
 
-### Key Functionalities
+## Key Functionalities
+
 - **User and System Information**: Functions to retrieve the current user's name and the system's name.
-- **String and Path Utilities**: Utility functions for handling paths and checking directory types.
-- **Error Handling**: Centralized error reporting mechanisms for better maintainability.
+- **String and Path Utilities**: Functions for handling paths and checking directory types.
+- **Error Handling**: Centralized error reporting mechanisms for improved maintainability.
 
-### Functions
+## Functions
 
-1. **`char* get_username()`**:
-   - Retrieves the username of the currently logged-in user using the `getpwuid` function.
-   - Returns "unknown" if the username cannot be determined.
+### `char* get_username()`
 
-2. **`char* get_system_name()`**:
-   - Uses the `uname` function to obtain the system's node name (hostname).
-   - Returns the hostname as a string.
+- Retrieves the username of the currently logged-in user using the `getpwuid` function.
+- Returns `"unknown"` if the username cannot be determined.
 
-3. **`int is_home_directory(const char *cwd)`**:
-   - Checks if the provided current working directory (`cwd`) matches the shell's home directory.
-   - Returns `1` if it matches; otherwise, returns `0`.
+### `char* get_system_name()`
 
-4. **`void handle_error(const char *msg)`**:
-   - Centralized error handling function that prints the provided error message to `stderr`.
-   - Uses `perror` to display the associated system error message based on `errno`.
+- Uses the `uname` function to obtain the system's node name (hostname).
+- Returns the hostname as a string.
 
-5. **`char* get_current_directory()`**:
-   - Retrieves the current working directory using `getcwd`.
-   - Returns a dynamically allocated string containing the directory path.
+### `int is_home_directory(const char *cwd)`
 
-6. **`void free_string_array(char **array)`**:
-   - Frees a dynamically allocated array of strings.
-   - Iterates through the array, freeing each string and then the array itself.
+- Checks if the provided current working directory (`cwd`) matches the shell's home directory.
+- Returns `1` if it matches; otherwise, returns `0`.
 
-### Example Usage
-Here is an example of how the utility functions might be used in conjunction with the shell:
+### `void handle_error(const char *msg)`
 
-```c
-#include "utils.h"
+- Centralized error handling function that prints the provided error message to `stderr`.
+- Uses `perror` to display the associated system error message based on `errno`.
 
-char *username = get_username();
-printf("Current user: %s\n", username);
+### `char* get_current_directory()`
 
-char *cwd = get_current_directory();
-printf("Current directory: %s\n", cwd);
-free(cwd); // Remember to free the allocated memory
+- Retrieves the current working directory using `getcwd`.
+- Returns a dynamically allocated string containing the directory path.
+
+### `void free_string_array(char **array)`
+
+- Frees a dynamically allocated array of strings.
+- Iterates through the array, freeing each string and then the array itself.
 
 
-## Header Files
+# Header Files
 
-### prompt.h
+## prompt.h
 
 The `prompt.h` header file defines the interface for displaying the command prompt in the shell.
 
-#### Functions
+### Functions
 
-- **`void display_prompt();`**
-  - Displays the command prompt, including the current user's username, system name, and the current working directory.
+- **`void display_prompt();`**  
+  Displays the command prompt, including the current user's username, system name, and the current working directory.
 
-### commands.h
+---
+
+## commands.h
 
 The `commands.h` header file declares various command-related functions used in the shell, including built-in commands for logging and directory navigation.
 
-#### Constants
-- **`#define MAX_PATH 4096`**: Maximum path length supported by the shell.
-- **`#define MAX_RESULTS 1000`**: Maximum number of results returned from search operations.
+### Constants
 
-#### Functions
+- **`#define MAX_PATH 4096`**  
+  Maximum path length supported by the shell.
 
-- **`void save_log();`**
-  - Saves the command log to persistent storage.
+- **`#define MAX_RESULTS 1000`**  
+  Maximum number of results returned from search operations.
 
-- **`void init_log();`**
-  - Initializes the command log.
+### Functions
 
-- **`void clear_log();`**
-  - Clears the current command log.
+- **`void save_log();`**  
+  Saves the command log to persistent storage.
 
-- **`void cleanup_log();`**
-  - Cleans up resources related to the command log.
+- **`void init_log();`**  
+  Initializes the command log.
 
-- **`void hop(char **args, int argc);`**
-  - Implements the 'hop' command, which changes the current directory.
+- **`void clear_log();`**  
+  Clears the current command log.
 
-- **`void seek(char **args, int argc);`**
-  - Implements the 'seek' command, which searches for files in a directory.
+- **`void cleanup_log();`**  
+  Cleans up resources related to the command log.
 
-- **`void reveal(char **args, int argc);`**
-  - Reveals hidden files or directories based on the provided arguments.
+- **`void hop(char **args, int argc);`**  
+  Implements the command hop, which changes the current directory.
 
-- **`void proclore(char **args, int argc);`**
-  - Implements the 'proclore' command, which displays process information.
+- **`void seek(char **args, int argc);`**  
+  Implements the command seek, which searches for files in a directory.
 
-- **`void add_to_log(const char *command);`**
-  - Adds a command to the log.
+- **`void reveal(char **args, int argc);`**  
+  Reveals hidden files or directories based on the provided arguments.
 
-- **`void log_command(char **args, int argc);`**
-  - Logs the executed command.
+- **`void proclore(char **args, int argc);`**  
+  Implements the command proclore, which displays process information.
 
-- **`void add_colored_path(char *dest, const char *path, const char *color_code);`**
-  - Adds a path with a specified color code to the display.
+- **`void add_to_log(const char *command);`**  
+  Adds a command to the log.
 
-- **`void search_directory(const char *directory, const char *search_term, char results[MAX_RESULTS][MAX_PATH], int *result_count, int d_flag, int f_flag);`**
-  - Searches a specified directory for files matching the search term and populates the results array.
+- **`void log_command(char **args, int argc);`**  
+  Logs the executed command.
 
-### utils.h
+- **`void add_colored_path(char *dest, const char *path, const char *color_code);`**  
+  Adds a path with a specified color code to the display.
+
+- **`void search_directory(const char *directory, const char *search_term, char results[MAX_RESULTS][MAX_PATH], int *result_count, int d_flag, int f_flag);`**  
+  Searches a specified directory for files matching the search term and populates the results array.
+
+---
+
+## utils.h
 
 The `utils.h` header file declares utility functions that provide various system and user-related functionalities in the shell.
 
-#### Global Variables
+### Global Variables
 
-- **`extern char *shell_home_directory;`**
-  - Global variable that stores the shell's home directory.
+- **`extern char *shell_home_directory;`**  
+  Global variable that stores the shell's home directory.
 
-#### Functions
+### Functions
 
-- **`char* get_username();`**
-  - Retrieves the current username.
+- **`char* get_username();`**  
+  Retrieves the current username.
 
-- **`char* get_system_name();`**
-  - Retrieves the system's hostname.
+- **`char* get_system_name();`**  
+  Retrieves the system's hostname.
 
-- **`void execute_command(char *cmd);`**
-  - Executes a given command, handling both built-in and external commands.
+- **`void execute_command(char *cmd);`**  
+  Executes a given command, handling both built-in and external commands.
 
-- **`void process_command(char *input);`**
-  - Processes user input and executes commands separated by semicolons.
+- **`void process_command(char *input);`**  
+  Processes user input and executes commands separated by semicolons.
 
-- **`void initialize_shell_home_directory();`**
-  - Initializes the shell's home directory variable.
+- **`void initialize_shell_home_directory();`**  
+  Initializes the shell's home directory variable.
 
-- **`int is_home_directory(const char *cwd);`**
-  - Checks if the specified current working directory is the home directory.
+- **`int is_home_directory(const char *cwd);`**  
+  Checks if the specified current working directory is the home directory.
 
-- **`void reveal(char **args, int argc);`**
-  - Reveals hidden files or directories based on provided arguments.
+- **`void reveal(char **args, int argc);`**  
+  Reveals hidden files or directories based on provided arguments.
 
-- **`void log_command(char **args, int argc);`**
-  - Logs the executed command.
+- **`void log_command(char **args, int argc);`**  
+  Logs the executed command.
 
-- **`void add_to_log(const char *command);`**
-  - Adds a command to the log.
+- **`void add_to_log(const char *command);`**  
+  Adds a command to the log.
 
-### Conclusion
+---
 
-These header files provide the necessary declarations for the various functionalities implemented in the shell. They enable modular development and ease of maintenance by separating the interface from the implementation.
+## Conclusion
+
+The utilities module and its associated header files provide the necessary declarations for various functionalities implemented in the shell. They enable modular development and ease of maintenance by separating the interface from the implementation.
+
+## Command Logging
+
+The shell logs all executed commands to a file named `command_log.txt`. This log file is created in the shell's home directory and is used to store a history of commands for reference. Total 15 commands are stored in the log file.
