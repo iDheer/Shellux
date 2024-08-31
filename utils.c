@@ -10,6 +10,7 @@
 #include <sys/time.h> // For time measurement
 #include "utils.h"
 #include "commands.h"
+#include <ctype.h>
 
 #define MAX_BG_PROCESSES 1024
 
@@ -45,8 +46,7 @@ int is_home_directory(const char *cwd) {
     return strcmp(cwd, shell_home_directory) == 0;
 }
 
-// Execute a command
-void execute_command(char *cmd) {
+void execute_command(char *cmd, int is_background) {
     char *args[4096];
     int argc = 0;
 
@@ -108,7 +108,6 @@ void execute_command(char *cmd) {
         return;
     }
 
-    // Execute the command using fork and exec
     pid_t pid = fork();
     if (pid == 0) { // Child process
         if (execvp(args[0], args) == -1) {
@@ -116,10 +115,8 @@ void execute_command(char *cmd) {
             exit(EXIT_FAILURE);
         }
     } else if (pid > 0) { // Parent process
-        // Check if it is a background process
-        if (args[argc - 1] && strcmp(args[argc - 1], "&") == 0) {
-            // Remove '&' from args
-            args[--argc] = NULL;
+        if (is_background) {
+            // Background process
             bg_pids[bg_count] = pid; // Store PID of background process
             bg_commands[bg_count] = strdup(log_entry); // Store command
             if (!bg_commands[bg_count]) {
@@ -138,10 +135,9 @@ void execute_command(char *cmd) {
 
             gettimeofday(&end, NULL);  // End time
             long seconds = end.tv_sec - start.tv_sec;
-            long micros = ((seconds * 1000000) + end.tv_usec) - (start.tv_usec);
 
-            if (micros > 2000000) {  // If the process took more than 2 seconds
-                printf("Process %s : %ld seconds\n", args[0], seconds);
+            if (seconds > 2) {  // If the process took more than 2 seconds
+                printf("<%s@%s:~ %s : %ld seconds>\n", get_username(), get_system_name(), log_entry, seconds);
             }
         }
     } else {
@@ -149,55 +145,48 @@ void execute_command(char *cmd) {
     }
 }
 
-// Process commands separated by ';' and handle background execution with '&'
+// Function to trim whitespace from the beginning and end of a string
+char *trim_whitespace(char *str) {
+    char *end;
+
+    // Trim leading space
+    while (isspace((unsigned char)*str)) str++;
+
+    // Trim trailing space
+    end = str + strlen(str) - 1;
+    while (end > str && isspace((unsigned char)*end)) end--;
+    end[1] = '\0'; // Null-terminate after the last non-space character
+
+    return str;
+}
+
 void process_command(char *input) {
     char *command;
     char *rest = input;
 
     // Tokenize commands based on ';'
     while ((command = strtok_r(rest, ";", &rest))) {
-        int background = 0;
+        char *sub_command;
+        char *rest_sub = command;
 
-        // Check for background execution
-        if (strchr(command, '&')) {
-            background = 1; // Set background flag
-            strtok(command, "&"); // Remove '&' from command
+        // Count the number of '&' in the command
+        int ampersand_count = 0;
+        for (char *c = command; *c != '\0'; c++) {
+            if (*c == '&') ampersand_count++;
         }
 
-        // Tokenize the command
-        char *args[4096];
-        int argc = 0;
-        char *cmd_copy = strdup(command); // Duplicate command for safe tokenization
-        if (!cmd_copy) {
-            perror("strdup");
-            continue; // Skip this command if allocation fails
-        }
+        // Tokenize the command based on '&'
+        while ((sub_command = strtok_r(rest_sub, "&", &rest_sub))) {
+            sub_command = trim_whitespace(sub_command);
+            if (*sub_command == '\0') continue; // Skip empty commands
 
-        char *token = strtok(cmd_copy, " \t\n"); // Tokenize by whitespace
-        while (token != NULL) {
-            args[argc++] = token;
-            token = strtok(NULL, " \t\n"); // Get next token
-        }
+            // Determine if the command should be executed in the background
+            int is_background = (ampersand_count > 0);
+            execute_command(sub_command, is_background);
 
-        args[argc] = NULL; // Null terminate the arguments array
-
-        // Handle command execution
-        if (argc > 0) {
-            if (background) {
-                pid_t pid = fork();
-                if (pid == 0) { // Child process
-                    execute_command(command);
-                    exit(0);
-                } else if (pid > 0) { // Parent process
-                    printf("Background PID: %d\n", pid);
-                } else {
-                    perror("fork");
-                }
-            } else {
-                execute_command(command);
+            if (is_background) {
+                ampersand_count--; // Decrement the count of background tasks
             }
         }
-
-        free(cmd_copy); // Free the duplicated command string
     }
 }

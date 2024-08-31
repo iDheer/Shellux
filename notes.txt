@@ -147,3 +147,12 @@ tpgid: The ID of the foreground process group.
 comm: The name of the executable.
 state: The current state of the process (e.g., running, sleeping).
 vsize: The virtual memory size of the process.
+
+
+
+
+
+
+
+
+
