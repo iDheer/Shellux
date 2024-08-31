@@ -468,7 +468,7 @@ void proclore(char **args, int argc) {
     }
 
     // Open and read the /proc/[pid]/stat file
-    FILE *stat_file = fopen(proc_path, "r"); // this was eaelier stat_path, but that was not working. 
+    FILE *stat_file = fopen(stat_path, "r");
     if (stat_file == NULL) {
         perror("fopen");
         return;
@@ -514,7 +514,6 @@ void proclore(char **args, int argc) {
     } else {
         printf("Failed to read process information.\n");
     }
-
     fclose(stat_file);
 }
 
