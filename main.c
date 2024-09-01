@@ -10,7 +10,7 @@
 #include "commands.h"
 #include "prompt.h"
 
-// handling the SIGCHLD
+// handling the SIGCHLD for background processes kyuki unka status collect karna padega nahito unka zombie process ban jayega 
 void handle_sigchld(int sig) {
     int saved_errno = errno; // Save errno to restore later
     while (1) {
@@ -28,7 +28,7 @@ int main() {
 
     init_log(); 
 
-    // Setting up signal handler for SIGCHLD
+    // signal handler for SIGCHLD to handle background processes 
     if (signal(SIGCHLD, handle_sigchld) == SIG_ERR) {
         perror("Failed to set signal handler");
         exit(EXIT_FAILURE);

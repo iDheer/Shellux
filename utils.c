@@ -126,7 +126,7 @@ void execute_command(char *cmd, int is_background) {
             bg_count++;
             printf("Background PID: %d\n", pid);
         } else {
-            // Foreground process: measure execution time
+            // Foreground process: measuer execution time
             struct timeval start, end;
             gettimeofday(&start, NULL);  // Start time
 
@@ -136,7 +136,7 @@ void execute_command(char *cmd, int is_background) {
             gettimeofday(&end, NULL);  // End time
             long seconds = end.tv_sec - start.tv_sec;
 
-            if (seconds > 2) {  // If the process took more than 2 seconds
+            if (seconds > 2) { 
                 printf("<%s@%s:~ %s : %ld seconds>\n", get_username(), get_system_name(), log_entry, seconds);
             }
         }

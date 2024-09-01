@@ -156,3 +156,24 @@ vsize: The virtual memory size of the process.
 
 
 
+
+Example Walkthrough:
+Suppose the input is: "ls & pwd; echo Hello & date".
+
+First Command (ls & pwd)
+
+Tokenized into: "ls & pwd"
+Ampersand Count: 1
+Sub-commands: "ls" and "pwd"
+Execution:
+"ls" is executed in the background.
+"pwd" is executed in the foreground (since it's the last part and ampersand_count becomes zero).
+Second Command (echo Hello & date)
+
+Tokenized into: "echo Hello & date"
+Ampersand Count: 1
+Sub-commands: "echo Hello" and "date"
+Execution:
+"echo Hello" is executed in the background.
+"date" is executed in the foreground.
+This structure enables the shell to handle complex command inputs efficiently, managing both sequential and parallel (background) execution.

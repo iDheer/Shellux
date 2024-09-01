@@ -168,7 +168,7 @@ int log_count = 0;
 
         for (int i = 0; i < log_count; ++i) {
             fprintf(log_file, "%s\n", command_log[i]);
-            printf("wrote %s\n", command_log[i]);
+            // printf("wrote %s\n", command_log[i]);
             free(command_log[i]);  // Freeing here
             command_log[i] = NULL;  // Ensuring pointer is nullified after freeing
         }
@@ -265,9 +265,6 @@ int log_count = 0;
         }
     }
 
-
-
-
 // Function to compare strings for qsort
 int compare(const void *a, const void *b) {
     return strcmp(*(const char **)a, *(const char **)b);
@@ -296,23 +293,23 @@ void print_file_details(const char *path, const char *filename) {
     printf((fileStat.st_mode & S_IWOTH) ? "w" : "-");
     printf((fileStat.st_mode & S_IXOTH) ? "x" : "-");
 
-    // Print number of links
+    // number of links to the file jo ki basically number of hard links to the file hote hain
     printf(" %lu", fileStat.st_nlink);
 
-    // Print user and group name
+    //user and group name of the file
     struct passwd *pwd = getpwuid(fileStat.st_uid);
     struct group *grp = getgrgid(fileStat.st_gid);
     printf(" %s %s", pwd ? pwd->pw_name : "???", grp ? grp->gr_name : "???");
 
-    // Print file size
+    //  file size
     printf(" %5ld", fileStat.st_size);
 
-    // Print last modification time
+    // last modification time
     char timebuff[80];
     strftime(timebuff, sizeof(timebuff), "%b %d %H:%M", localtime(&fileStat.st_mtime));
     printf(" %s", timebuff);
 
-    // Print file name with color coding
+    // file name with color codes ke saath 
     if (S_ISDIR(fileStat.st_mode)) {
         printf(" \033[1;34m%s\033[0m\n", filename); // Blue for directories
     } else if (fileStat.st_mode & S_IXUSR) {
@@ -424,11 +421,11 @@ void reveal(char **args, int argc) {
 
             // Print file name with color coding
             if (S_ISDIR(fileStat.st_mode)) {
-                printf("\033[1;34m%s\033[0m\n", entries[i]); // Blue for directories
+                printf("\033[1;34m%s\033[0m\n", entries[i]); // Blue directories
             } else if (fileStat.st_mode & S_IXUSR) {
-                printf("\033[1;32m%s\033[0m\n", entries[i]); // Green for executables
+                printf("\033[1;32m%s\033[0m\n", entries[i]); // Green executables
             } else {
-                printf("\033[0;37m%s\033[0m\n", entries[i]); // White for regular files
+                printf("\033[0;37m%s\033[0m\n", entries[i]); // Whitte baki sabka
             }
         }
         free(entries[i]);
@@ -510,87 +507,66 @@ void proclore(char **args, int argc) {
     fclose(stat_file);
 }
 
-void search_directory(const char *directory, const char *search_term, char results[MAX_RESULTS][MAX_PATH], int *result_count, int d_flag, int f_flag, int e_flag) {
+#define BLUE "\033[1;34m"
+#define GREEN "\033[1;32m"
+#define RESET "\033[0m"
+
+void search_directory(const char *base_dir, const char *search_term, char results[MAX_RESULTS][MAX_PATH], int *result_count, int d_flag, int f_flag, int e_flag, char *found_file, char *found_dir, int *file_count, int *dir_count) {
     DIR *dir;
     struct dirent *entry;
-    struct stat statbuf;
+    struct stat path_stat;
     char path[MAX_PATH];
 
-    if ((dir = opendir(directory)) == NULL) {
+    if (!(dir = opendir(base_dir))) {
         perror("opendir");
         return;
     }
 
     while ((entry = readdir(dir)) != NULL) {
-        snprintf(path, sizeof(path), "%s/%s", directory, entry->d_name);
-
-        if (stat(path, &statbuf) == -1) {
-            perror("stat");
-            continue;
-        }
-
-        // Skip the "." and ".." directories
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
             continue;
         }
 
-        // Check if the entry matches the target name
-        if (strcmp(entry->d_name, search_term) == 0) {
-            // Skip files or directories based on the flags
-            if ((d_flag && !S_ISDIR(statbuf.st_mode)) || (f_flag && !S_ISREG(statbuf.st_mode))) {
-                continue; // Skip if it doesn't match the requested type
-            }
+        snprintf(path, sizeof(path), "%s/%s", base_dir, entry->d_name);
+        stat(path, &path_stat);
 
-            // Handle coloring and result storage as before...
-            if (S_ISDIR(statbuf.st_mode)) {
-                add_colored_path(results[*result_count], path, "\033[1;34m"); // Blue for directories
-            } else {
-                add_colored_path(results[*result_count], path, "\033[1;32m"); // Green for files
-            }
-            (*result_count)++;
+        // Calculate the relative path from the base directory
+        const char *relative_path = path + strlen(base_dir) + 1;
 
-            // Stop if we've hit the maximum number of results
-            if (*result_count >= MAX_RESULTS) {
-                fprintf(stderr, "Warning: Maximum number of results reached.\n");
-                break;
+        if (S_ISDIR(path_stat.st_mode)) {
+            if (strncmp(entry->d_name, search_term, strlen(search_term)) == 0 && (d_flag || (!d_flag && !f_flag))) {
+                (*dir_count)++;
+                strncpy(found_dir, path, sizeof(path));
+                if (*result_count < MAX_RESULTS) {
+                    snprintf(results[*result_count], MAX_PATH, BLUE "%s" RESET, relative_path);
+                    (*result_count)++;
+                }
             }
-        }
-
-        // If the entry is a directory, recursively search within it
-        if (S_ISDIR(statbuf.st_mode)) {
-            search_directory(path, search_term, results, result_count, d_flag, f_flag, e_flag);
+            // Recursively search in this directory
+            search_directory(path, search_term, results, result_count, d_flag, f_flag, e_flag, found_file, found_dir, file_count, dir_count);
+        } else if (S_ISREG(path_stat.st_mode)) {
+            if (strncmp(entry->d_name, search_term, strlen(search_term)) == 0 && (f_flag || (!d_flag && !f_flag))) {
+                (*file_count)++;
+                strncpy(found_file, path, sizeof(path));
+                if (*result_count < MAX_RESULTS) {
+                    snprintf(results[*result_count], MAX_PATH, GREEN "%s" RESET, relative_path);
+                    (*result_count)++;
+                }
+            }
         }
     }
 
     closedir(dir);
 }
 
-void add_colored_path(char *dest, const char *path, const char *color_code) {
-    size_t remaining = MAX_PATH;
-    int written = snprintf(dest, remaining, "%s", color_code);
-    if (written > 0) {
-        dest += written;
-        remaining -= written;
-    }
-
-    if (remaining > 0) {
-        size_t path_len = strlen(path);
-        if (path_len > remaining - 5) {  // -5 for "...\033[0m"
-            path_len = remaining - 5;
-            strncpy(dest, path, path_len - 3);
-            strcpy(dest + path_len - 3, "...\033[0m");
-        } else {
-            snprintf(dest, remaining, "%s\033[0m", path);
-        }
-    }
-}
-
 void seek(char **args, int argc) {
     int d_flag = 0, f_flag = 0, e_flag = 0;
     char *target_name = NULL;
-    char *target_dir = "."; // Default to current directory if not specified
+    char *target_dir = ".";
+    int file_count = 0, dir_count = 0;
+    char found_file[MAX_PATH] = {0};
+    char found_dir[MAX_PATH] = {0};
 
-    // Parse flags and arguments
     for (int i = 1; i < argc; i++) {
         if (strcmp(args[i], "-d") == 0) {
             d_flag = 1;
@@ -598,84 +574,59 @@ void seek(char **args, int argc) {
             f_flag = 1;
         } else if (strcmp(args[i], "-e") == 0) {
             e_flag = 1;
-        } else if (target_name == NULL) {
+        } else if (!target_name) {
             target_name = args[i];
         } else {
             target_dir = args[i];
         }
     }
 
-    // Validate flags
     if (d_flag && f_flag) {
-        printf("Invalid flags! Cannot use both -d and -f.\n");
+        printf("Invalid flags! Cannot use both -d and -f at the same time.\n");
         return;
     }
 
-    // If no target name is provided
-    if (target_name == NULL) {
+    if (!target_name) {
         printf("No target name provided!\n");
         return;
     }
 
-    // Recursively search the directory tree
     char results[MAX_RESULTS][MAX_PATH];
     int result_count = 0;
-    int dir_found = 0;  // Count of directories found
-    int file_found = 0; // Count of files found
 
-    search_directory(target_dir, target_name, results, &result_count, d_flag, f_flag, e_flag);
+    search_directory(target_dir, target_name, results, &result_count, d_flag, f_flag, e_flag, found_file, found_dir, &file_count, &dir_count);
 
-    // Count files and directories found
-    for (int i = 0; i < result_count; i++) {
-        struct stat sb;
-        if (stat(results[i], &sb) == 0) {
-            if (S_ISDIR(sb.st_mode)) {
-                dir_found++;
-            } else if (S_ISREG(sb.st_mode)) {
-                file_found++;
-            }
-        }
-    }
-
-    // Handle the -e flag
-    if (e_flag && result_count == 1) {
-        struct stat sb;
-        if (stat(results[0], &sb) == -1) {
-            printf("Missing permissions for task!\n");
-            return;
-        }
-
-        if (dir_found == 1 && file_found == 0) {
-            // Only one directory found
-            if (chdir(results[0]) == -1) {
-                printf("Missing permissions for task!\n");
-            } else {
-                char cwd[MAX_PATH];
-                getcwd(cwd, sizeof(cwd));
-                printf("%s\n", cwd);
-            }
-        } else if (file_found == 1 && dir_found == 0) {
-            // Only one file found
-            FILE *file = fopen(results[0], "r");
-            if (!file) {
-                printf("Missing permissions for task!\n");
-            } else {
-                char ch;
-                while ((ch = fgetc(file)) != EOF) {
-                    putchar(ch);
-                }
-                fclose(file);
-            }
-        }
-        return;
-    }
-
-    // Print results
     if (result_count == 0) {
         printf("No match found!\n");
     } else {
         for (int i = 0; i < result_count; i++) {
             printf("%s\n", results[i]);
+        }
+    }
+
+    if (e_flag) {
+        if (file_count == 1 && dir_count == 0) {
+            FILE *file = fopen(found_file, "r");
+            if (!file) {
+                perror("fopen");
+                return;
+            }
+
+            char ch;
+            while ((ch = fgetc(file)) != EOF) {
+                putchar(ch);
+            }
+            fclose(file);
+        } else if (dir_count == 1 && file_count == 0) {
+            if (chdir(found_dir) == 0) {
+                char cwd[MAX_PATH];
+                getcwd(cwd, sizeof(cwd));
+                printf("Changed directory to: %s\n", cwd);
+            } else {
+                perror("chdir");
+            }
+        } else {
+            printf("No match found!\n");
         }
     }
 }
