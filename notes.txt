@@ -9,7 +9,6 @@ To check your system hostname, type the command "hostname" in the terminal.
 
 snprintf is used to format and store a string into the display_path buffer. It does not directly produce output to the terminal.
 
-
 #include <unistd.h>: Includes the POSIX API, providing access to system calls like getcwd (get current working directory).
 
 struct utsname {
@@ -147,13 +146,6 @@ tpgid: The ID of the foreground process group.
 comm: The name of the executable.
 state: The current state of the process (e.g., running, sleeping).
 vsize: The virtual memory size of the process.
-
-
-
-
-
-
-
 
 
 
