@@ -12,6 +12,7 @@
 #include <time.h>
 #include <errno.h>
 #include<fcntl.h>
+#include <libgen.h>    // For dirname()
 #include <sys/stat.h>
 #include <libgen.h>
 #include <ctype.h>
@@ -319,7 +320,6 @@ void print_file_details(const char *path, const char *filename) {
     }
 }
 
-// Function to reveal directory contents
 void reveal(char **args, int argc) {
     int optind = 1;
     int show_all = 0;
@@ -348,9 +348,13 @@ void reveal(char **args, int argc) {
     // Handle special symbols
     if (strcmp(target_dir, ".") == 0) {
         target_dir = getcwd(NULL, 0); // Current working directory
-    } else if (strcmp(target_dir, "..") == 0) {
-        char *cwd = getcwd(NULL, 0);
-        target_dir = dirname(cwd); // Get the parent directory
+    } else if (strcmp(target_dir, "..") == 0 || strstr(target_dir, "../") != NULL) {
+        char *resolved_path = realpath(target_dir, NULL); // Resolve relative paths
+        if (resolved_path == NULL) {
+            perror("realpath");
+            return;
+        }
+        target_dir = resolved_path;
     } else if (target_dir[0] == '~' && target_dir[1] != '/') {
         target_dir = shell_home_directory; // Shell's home directory
     } else if (target_dir[0] == '~' && target_dir[1] == '/') {
@@ -370,10 +374,9 @@ void reveal(char **args, int argc) {
             return;
         }
         target_dir = prev_dir; // Previous directory handling
-    } else if(target_dir[0] == '/'){
-        // do nothing, in case of absolute path
-    }
-    else {
+    } else if (target_dir[0] == '/') {
+        // Do nothing for absolute path
+    } else {
         printf("Error: Invalid directory '%s'\n", target_dir);
         return;        
     }
@@ -425,7 +428,7 @@ void reveal(char **args, int argc) {
             } else if (fileStat.st_mode & S_IXUSR) {
                 printf("\033[1;32m%s\033[0m\n", entries[i]); // Green executables
             } else {
-                printf("\033[0;37m%s\033[0m\n", entries[i]); // Whitte baki sabka
+                printf("\033[0;37m%s\033[0m\n", entries[i]); // White for others
             }
         }
         free(entries[i]);

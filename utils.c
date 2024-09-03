@@ -11,6 +11,8 @@
 #include "utils.h"
 #include "commands.h"
 #include <ctype.h>
+#include <libgen.h>    // For dirname()
+#include <fcntl.h>
 
 #define MAX_BG_PROCESSES 1024
 
@@ -48,40 +50,58 @@ int is_home_directory(const char *cwd) {
 
 void execute_command(char *cmd, int is_background) {
     char *args[4096];
+    char *input_file = NULL;
+    char *output_file = NULL;
+    int append_mode = 0;
     int argc = 0;
 
-    // Tokenize the command string
+    // Parse the command string and handle redirection
     while (*cmd != '\0') {
         while (*cmd == ' ' || *cmd == '\t' || *cmd == '\n') {
             cmd++;
         }
         if (*cmd == '\0') break;
 
-        // Handle quoted arguments
-        if (*cmd == '"') {
+        // Handle input redirection
+        if (*cmd == '<') {
             cmd++;
-            args[argc] = cmd;
-            while (*cmd != '"' && *cmd != '\0') cmd++;
-            if (*cmd == '\0') {
-                printf("Error: Missing closing quote\n");
-                return;
-            }
-            *cmd = '\0';
-            cmd++;
-        } else {
-            args[argc] = cmd;
+            while (*cmd == ' ' || *cmd == '\t') cmd++; // Skip spaces
+            input_file = cmd;
             while (*cmd != ' ' && *cmd != '\t' && *cmd != '\n' && *cmd != '\0') cmd++;
             if (*cmd != '\0') {
                 *cmd = '\0';
                 cmd++;
             }
         }
-        argc++;
+        // Handle output redirection
+        else if (*cmd == '>') {
+            cmd++;
+            if (*cmd == '>') {  // Check for append mode (>>)
+                append_mode = 1;
+                cmd++;
+            }
+            while (*cmd == ' ' || *cmd == '\t') cmd++; // Skip spaces
+            output_file = cmd;
+            while (*cmd != ' ' && *cmd != '\t' && *cmd != '\n' && *cmd != '\0') cmd++;
+            if (*cmd != '\0') {
+                *cmd = '\0';
+                cmd++;
+            }
+        }
+        // Handle regular arguments
+        else {
+            args[argc++] = cmd;
+            while (*cmd != ' ' && *cmd != '\t' && *cmd != '\n' && *cmd != '\0') cmd++;
+            if (*cmd != '\0') {
+                *cmd = '\0';
+                cmd++;
+            }
+        }
     }
 
-    args[argc] = NULL; // Null-terminate the arguments array
+    args[argc] = NULL;  // Null-terminate the arguments array
 
-    if (args[0] == NULL) return; // No command entered
+    if (args[0] == NULL) return;  // No command entered
 
     // Log the command
     char log_entry[4096];
@@ -90,7 +110,7 @@ void execute_command(char *cmd, int is_background) {
         snprintf(log_entry + strlen(log_entry), sizeof(log_entry) - strlen(log_entry), " %s", args[i]);
     }
 
-    // Handle built-in commands
+    // Handle built-in commands (similar to your existing code)
     if (strcmp(args[0], "hop") == 0) {
         hop(args, argc);
         return;
@@ -109,16 +129,44 @@ void execute_command(char *cmd, int is_background) {
     }
 
     pid_t pid = fork();
-    if (pid == 0) { // Child process
+    if (pid == 0) {  // Child process
+        // Handle input redirection
+        if (input_file != NULL) {
+            int fd_in = open(input_file, O_RDONLY);
+            if (fd_in < 0) {
+                perror("No such input file found!");
+                exit(EXIT_FAILURE);
+            }
+            dup2(fd_in, STDIN_FILENO);  // Redirect stdin to the input file
+            close(fd_in);
+        }
+
+        // Handle output redirection
+        if (output_file != NULL) {
+            int fd_out;
+            if (append_mode) {
+                fd_out = open(output_file, O_WRONLY | O_CREAT | O_APPEND, 0644);
+            } else {
+                fd_out = open(output_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            }
+            if (fd_out < 0) {
+                perror("Failed to open output file!");
+                exit(EXIT_FAILURE);
+            }
+            dup2(fd_out, STDOUT_FILENO);  // Redirect stdout to the output file
+            close(fd_out);
+        }
+
+        // Execute the command
         if (execvp(args[0], args) == -1) {
             perror("execvp");  // Execution failed
             exit(EXIT_FAILURE);
         }
-    } else if (pid > 0) { // Parent process
+    } else if (pid > 0) {  // Parent process
         if (is_background) {
             // Background process
-            bg_pids[bg_count] = pid; // Store PID of background process
-            bg_commands[bg_count] = strdup(log_entry); // Store command
+            bg_pids[bg_count] = pid;  // Store PID of background process
+            bg_commands[bg_count] = strdup(log_entry);  // Store command
             if (!bg_commands[bg_count]) {
                 perror("strdup");
                 exit(EXIT_FAILURE);
@@ -126,7 +174,7 @@ void execute_command(char *cmd, int is_background) {
             bg_count++;
             printf("Background PID: %d\n", pid);
         } else {
-            // Foreground process: measuer execution time
+            // Foreground process: measure execution time
             struct timeval start, end;
             gettimeofday(&start, NULL);  // Start time
 
