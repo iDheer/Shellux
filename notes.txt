@@ -168,4 +168,126 @@ Sub-commands: "echo Hello" and "date"
 Execution:
 "echo Hello" is executed in the background.
 "date" is executed in the foreground.
-This structure enables the shell to handle complex command inputs efficiently, managing both sequential and parallel (background) execution.
+This structure enables the shell to handle complex command inputs efficiently, managing both sequential and parallel (background) execution.s -l; cat file.txt | grep "search" > output.txt &
+
+
+
+
+
+PROCESS CONTROL FLOW 
+
+ls -l; cat file.txt | grep "search" > output.txt &
+
+Let's break down the control flow for a complex command, which includes background execution, pipes, and semicolon-separated commands. The command we'll use as an example is:
+
+Example Command: ls -l; cat file.txt | grep "search" > output.txt &
+
+Step-by-Step Breakdown of Control Flow
+1. Entry Point: process_command()
+Input: ls -l; cat file.txt | grep "search" > output.txt &
+This function receives the full command input from the shell prompt.
+a. Whitespace Trimming (trim_whitespace)
+The trim_whitespace function trims any unnecessary spaces at the start or end of the input string.
+It returns the cleaned-up command: ls -l; cat file.txt | grep "search" > output.txt &.
+b. Splitting by Semicolons
+The process_command function splits the input string by semicolons (;), resulting in two separate commands:
+
+ls -l
+cat file.txt | grep "search" > output.txt &
+The function then processes each command individually in a loop.
+
+First Command: ls -l
+2. Background Check
+Input: ls -l
+No & symbol is found in the command, so is_background is set to 0.
+3. Pipe Check
+Input: ls -l
+The function checks for the presence of pipes (|), but none are found. Hence, the command is treated as a single command.
+4. Command Execution (execute_command)
+Input: ls -l, is_background = 0
+The execute_command function is called to handle this command in the foreground.
+a. Argument Parsing
+The command is parsed into arguments: args = {"ls", "-l", NULL}.
+b. Forking a Process
+A child process is forked.
+c. Command Execution in the Child Process
+The child process uses execvp("ls", args) to execute ls -l.
+d. Parent Waits for Child
+Since it's a foreground process, the parent waits for the child to finish (waitpid).
+Once the command is done, control returns to process_command to handle the next command.
+Second Command: cat file.txt | grep "search" > output.txt &
+5. Background Check
+Input: cat file.txt | grep "search" > output.txt &
+The & symbol at the end indicates that the command should run in the background.
+The & is removed, and is_background is set to 1.
+6. Pipe Check
+Input: cat file.txt | grep "search" > output.txt
+The function detects a pipe (|) between cat file.txt and grep "search".
+The command is split into two piped subcommands:
+cat file.txt
+grep "search" > output.txt
+7. Command Execution with Pipes (execute_piped_commands)
+Input: cat file.txt | grep "search" > output.txt, is_background = 1
+a. Pipe Creation
+The function creates a pipe to connect the output of cat to the input of grep.
+b. Forking Processes for Each Command
+First Child (for cat file.txt):
+
+A child process is forked to run cat file.txt.
+The child process executes the command: execvp("cat", {"cat", "file.txt", NULL}).
+The output of this command is redirected to the pipe's write end.
+Second Child (for grep "search" > output.txt):
+
+Another child process is forked to run grep "search".
+This child reads from the pipe's read end.
+The output of this command is redirected to a file (output.txt) using output redirection (>).
+The file is opened, and the output is written to it.
+c. Parent Process (Background)
+Since this is a background process, the parent process does not wait for the child processes to finish.
+Instead, the parent process logs the background PID, stores the command in bg_commands, and immediately returns control to the shell.
+Control Returns to Shell
+At this point, both commands have been processed.
+The first command (ls -l) was executed in the foreground, and the shell waited for it to finish.
+The second command (cat file.txt | grep "search" > output.txt) is running in the background, and the shell is free to accept new input without waiting for it to finish.
+Summary of Function Flow
+process_command():
+
+Entry point for the entire command.
+Trims whitespace and splits the input into semicolon-separated commands.
+Processes each command individually.
+trim_whitespace():
+
+Removes leading/trailing spaces.
+execute_command():
+
+Handles the execution of single, non-piped commands.
+Forks a child process to execute the command.
+Manages input/output redirection if specified.
+Waits for the process to complete if it's a foreground command.
+execute_piped_commands():
+
+Handles commands involving pipes.
+Creates pipes to connect the output of one command to the input of the next.
+Forks separate processes for each command in the pipeline.
+Manages background execution if necessary.
+waitpid():
+
+Used to wait for child processes to finish in foreground execution.
+fork():
+
+Creates new processes to execute commands.
+Key Features Demonstrated:
+Foreground execution: ls -l was run in the foreground.
+Background execution: cat file.txt | grep "search" > output.txt was run in the background.
+Piped commands: cat file.txt and grep "search" were connected via a pipe.
+Output redirection: The output of grep "search" was redirected to output.txt.
+This example showcases the use of all the core shell functionalities in a stepwise and structured manner.
+
+
+
+
+
+
+
+
+

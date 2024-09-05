@@ -193,6 +193,117 @@ void execute_command(char *cmd, int is_background) {
     }
 }
 
+void tokenize_command(char *command, char *args[]) {
+    char *ptr = command;
+    int arg_count = 0;
+    char *token;
+    char *end_ptr;
+
+    while (*ptr) {
+        // Skip whitespace
+        while (*ptr == ' ') {
+            ptr++;
+        }
+
+        // Handle quoted strings
+        if (*ptr == '\'' || *ptr == '\"') {
+            char quote = *ptr++;
+            token = ptr; // Start of the token
+            while (*ptr && *ptr != quote) {
+                ptr++;
+            }
+            if (*ptr == quote) {
+                *ptr++ = '\0'; // Null-terminate the token
+                args[arg_count++] = token; // Save the argument
+            }
+            continue;
+        }
+
+        // Handle normal tokens
+        end_ptr = ptr;
+        while (*end_ptr && *end_ptr != ' ') {
+            end_ptr++;
+        }
+
+        if (end_ptr != ptr) {
+            *end_ptr = '\0'; // Null-terminate the token
+            args[arg_count++] = ptr; // Save the argument
+            ptr = end_ptr + 1; // Move past the token
+        }
+    }
+    args[arg_count] = NULL; // Null-terminate the arguments array
+}
+
+void execute_piped_commands(char *piped_commands[], int count, int is_background) {
+    int pipefds[2 * (count - 1)];
+    pid_t pids[count];
+
+    // Create pipes
+    for (int i = 0; i < count - 1; i++) {
+        if (pipe(pipefds + i * 2) == -1) {
+            perror("pipe");
+            return;
+        }
+    }
+
+    for (int i = 0; i < count; i++) {
+        pids[i] = fork();
+        if (pids[i] == -1) {
+            perror("fork");
+            return;
+        }
+
+        if (pids[i] == 0) { // Child process
+            // Set up input/output redirection
+            if (i != 0) {
+                dup2(pipefds[(i - 1) * 2], STDIN_FILENO); // Input from previous pipe
+            }
+            if (i != count - 1) {
+                dup2(pipefds[i * 2 + 1], STDOUT_FILENO); // Output to next pipe
+            }
+
+            // Close all pipe file descriptors in child
+            for (int j = 0; j < 2 * (count - 1); j++) {
+                close(pipefds[j]);
+            }
+
+            // Tokenize the command
+            char *args[4096];
+            tokenize_command(piped_commands[i], args); // Use the new tokenizer
+
+            printf("Executing command: %s\n", args[0]);
+            for (int j = 1; args[j] != NULL; j++) {
+                printf("Argument %d: %s\n", j, args[j]);
+            }
+
+            // Execute the command
+            if (execvp(args[0], args) == -1) {
+                perror("execvp");
+                exit(EXIT_FAILURE);
+            }
+        }
+    }
+
+    // Close all pipe file descriptors in parent
+    for (int i = 0; i < 2 * (count - 1); i++) {
+        close(pipefds[i]);
+    }
+
+    // Parent process waits for all child processes
+    if (!is_background) {
+        for (int i = 0; i < count; i++) {
+            waitpid(pids[i], NULL, 0);
+        }
+    } else {
+        for (int i = 0; i < count; i++) {
+            printf("Background process PID: %d\n", pids[i]);
+        }
+    }
+}
+
+
+
+
 // Function to trim whitespace from the beginning and end of a string
 char *trim_whitespace(char *str) {
     char *end;
@@ -209,32 +320,56 @@ char *trim_whitespace(char *str) {
 }
 
 void process_command(char *input) {
-    char *command;
-    char *rest = input;
+    // Trim whitespace from the input command
+    char *trimmed_command = trim_whitespace(input);
+    if (strlen(trimmed_command) == 0) {
+        return; // Skip empty commands
+    }
 
-    // Tokenize commands based on ';'
-    while ((command = strtok_r(rest, ";", &rest))) {
-        char *sub_command;
-        char *rest_sub = command;
+    // Split the command into separate commands based on ';'
+    char *commands[100]; // Adjust size as needed
+    int command_count = 0;
 
-        // Count the number of '&' in the command
-        int ampersand_count = 0;
-        for (char *c = command; *c != '\0'; c++) {
-            if (*c == '&') ampersand_count++;
+    char *command = strtok(trimmed_command, ";");
+    while (command != NULL) {
+        commands[command_count++] = command;
+        command = strtok(NULL, ";");
+    }
+
+    // Iterate over each command, abhi tak commands array mein commands split ho chuke hain on the basis of just ';' (which had been pehle cleaned off all the extra white spaces in the first or back )
+    for (int i = 0; i < command_count; i++) {
+        // Check for background process indication
+        char *final_command = commands[i];
+        int is_background = 0;
+
+        // Trim whitespace from the command
+        final_command = trim_whitespace(final_command);
+
+        // Check if the command is a background process
+        if (strcmp(final_command + strlen(final_command) - 1, "&") == 0) {
+            is_background = 1;
+            final_command[strlen(final_command) - 1] = '\0'; // Remove '&' from command
+            final_command = trim_whitespace(final_command); // Trim again
         }
 
-        // Tokenize the command based on '&'
-        while ((sub_command = strtok_r(rest_sub, "&", &rest_sub))) {
-            sub_command = trim_whitespace(sub_command);
-            if (*sub_command == '\0') continue; // Skip empty commands
+        // Split the command into piped commands
+        char *piped_commands[100]; // Adjust size as needed
+        int piped_command_count = 0;
 
-            // Determine if the command should be executed in the background
-            int is_background = (ampersand_count > 0);
-            execute_command(sub_command, is_background);
+        char *pipe_cmd = strtok(final_command, "|");
+        while (pipe_cmd != NULL) {
+            piped_commands[piped_command_count++] = pipe_cmd;
+            pipe_cmd = strtok(NULL, "|");
+        }
 
-            if (is_background) {
-                ampersand_count--; // Decrement the count of background tasks
-            }
+        // Execute based on the number of piped commands
+        if (piped_command_count == 1) {
+            // Single command
+            execute_command(piped_commands[0], is_background);
+        } else {
+            // Multiple piped commands
+            execute_piped_commands(piped_commands, piped_command_count, is_background);
         }
     }
 }
+
