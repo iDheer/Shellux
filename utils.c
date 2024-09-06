@@ -237,6 +237,32 @@ void tokenize_command(char *command, char *args[]) {
 void execute_piped_commands(char *piped_commands[], int count, int is_background) {
     int pipefds[2 * (count - 1)];
     pid_t pids[count];
+    char *input_file = NULL;
+    char *output_file = NULL;
+    int append_mode = 0;
+
+    // Parse redirection from the first and last command
+    if (strchr(piped_commands[0], '<')) {
+        char *first_cmd = piped_commands[0];
+        input_file = strtok(first_cmd, "<");
+        input_file = strtok(NULL, "<");
+        input_file = trim_whitespace(input_file);
+        piped_commands[0] = first_cmd;  // Update the command without redirection part
+    }
+
+    if (strchr(piped_commands[count - 1], '>')) {
+        char *last_cmd = piped_commands[count - 1];
+        if (strstr(last_cmd, ">>")) {
+            append_mode = 1;
+            output_file = strtok(last_cmd, ">>");
+            output_file = strtok(NULL, ">>");
+        } else {
+            output_file = strtok(last_cmd, ">");
+            output_file = strtok(NULL, ">");
+        }
+        output_file = trim_whitespace(output_file);
+        piped_commands[count - 1] = last_cmd;  // Update the command without redirection part
+    }
 
     // Create pipes
     for (int i = 0; i < count - 1; i++) {
@@ -254,29 +280,49 @@ void execute_piped_commands(char *piped_commands[], int count, int is_background
         }
 
         if (pids[i] == 0) { // Child process
-            // Set up input/output redirection
-            if (i != 0) {
+            // Handle input redirection for the first command
+            if (i == 0 && input_file != NULL) {
+                int fd_in = open(input_file, O_RDONLY);
+                if (fd_in < 0) {
+                    perror("Failed to open input file");
+                    exit(EXIT_FAILURE);
+                }
+                dup2(fd_in, STDIN_FILENO);
+                close(fd_in);
+            }
+
+            // Handle output redirection for the last command
+            if (i == count - 1 && output_file != NULL) {
+                int fd_out;
+                if (append_mode) {
+                    fd_out = open(output_file, O_WRONLY | O_CREAT | O_APPEND, 0644);
+                } else {
+                    fd_out = open(output_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+                }
+                if (fd_out < 0) {
+                    perror("Failed to open output file");
+                    exit(EXIT_FAILURE);
+                }
+                dup2(fd_out, STDOUT_FILENO);
+                close(fd_out);
+            }
+
+            // Set up pipe input/output
+            if (i != 0) {  // Not the first command
                 dup2(pipefds[(i - 1) * 2], STDIN_FILENO); // Input from previous pipe
             }
-            if (i != count - 1) {
+            if (i != count - 1) {  // Not the last command
                 dup2(pipefds[i * 2 + 1], STDOUT_FILENO); // Output to next pipe
             }
 
-            // Close all pipe file descriptors in child
+            // Close all pipe file descriptors
             for (int j = 0; j < 2 * (count - 1); j++) {
                 close(pipefds[j]);
             }
 
-            // Tokenize the command
+            // Tokenize and execute command
             char *args[4096];
-            tokenize_command(piped_commands[i], args); // Use the new tokenizer
-
-            printf("Executing command: %s\n", args[0]);
-            for (int j = 1; args[j] != NULL; j++) {
-                printf("Argument %d: %s\n", j, args[j]);
-            }
-
-            // Execute the command
+            tokenize_command(piped_commands[i], args);
             if (execvp(args[0], args) == -1) {
                 perror("execvp");
                 exit(EXIT_FAILURE);
@@ -284,12 +330,12 @@ void execute_piped_commands(char *piped_commands[], int count, int is_background
         }
     }
 
-    // Close all pipe file descriptors in parent
+    // Close pipe file descriptors in parent
     for (int i = 0; i < 2 * (count - 1); i++) {
         close(pipefds[i]);
     }
 
-    // Parent process waits for all child processes
+    // Parent waits for children
     if (!is_background) {
         for (int i = 0; i < count; i++) {
             waitpid(pids[i], NULL, 0);
@@ -300,9 +346,6 @@ void execute_piped_commands(char *piped_commands[], int count, int is_background
         }
     }
 }
-
-
-
 
 // Function to trim whitespace from the beginning and end of a string
 char *trim_whitespace(char *str) {
