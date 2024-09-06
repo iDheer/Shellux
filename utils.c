@@ -6,6 +6,7 @@
 #include <sys/utsname.h>
 #include <limits.h> // For PATH_MAX
 #include <sys/types.h>
+#include <errno.h> // Include the header file that defines ESRCH
 #include <sys/wait.h>
 #include <sys/time.h> // For time measurement
 #include "utils.h"
@@ -14,22 +15,19 @@
 #include <libgen.h>    // For dirname()
 #include <fcntl.h>
 
-
 #define MAX_BG_PROCESSES 1024
+#define MAX_COMMANDS 100
 
-pid_t bg_pids[MAX_BG_PROCESSES];
-char *bg_commands[MAX_BG_PROCESSES];
-int bg_count = 0; // Keep track of number of background processes
+typedef struct {
+    pid_t pid;
+    char *command;
+    char state[16]; // "Running" or "Terminated"
+} ProcessInfo;
 
-typedef struct Process {
-    pid_t pid;            // Process ID
-    char command[256];    // Command name
-    char state[10];       // Process state: "Running" or "Stopped"
-} Process;
-
-#define MAX_PROCESSES 100 // Adjust size as needed
-Process process_list[MAX_PROCESSES];
-int process_count = 0;
+int bg_count = 0; // Counter for background processes
+pid_t bg_pids[MAX_BG_PROCESSES]; // Array of background PIDs
+char *bg_commands[MAX_BG_PROCESSES]; // Array of background command names
+char *command_statuses[MAX_BG_PROCESSES]; // Array for process statuses ("Running", "Stopped")
 
 char *shell_home_directory; // Global variable to store the shell home directory
 
@@ -57,6 +55,20 @@ char* get_system_name() {
 // Check if the current directory is the home directory
 int is_home_directory(const char *cwd) {
     return strcmp(cwd, shell_home_directory) == 0;
+}
+
+void purge_oldest_background_commands() {
+    int purge_count = MAX_BG_PROCESSES / 2; // Purge the oldest 50 commands
+
+    // Shift remaining commands up by 50
+    for (int i = purge_count; i < bg_count; i++) {
+        bg_pids[i - purge_count] = bg_pids[i];
+        bg_commands[i - purge_count] = bg_commands[i];
+        command_statuses[i - purge_count] = command_statuses[i];
+    }
+
+    // Reduce the background process count
+    bg_count -= purge_count;
 }
 
 void execute_command(char *cmd, int is_background) {
@@ -176,31 +188,44 @@ void execute_command(char *cmd, int is_background) {
             perror("execvp");  // Execution failed
             exit(EXIT_FAILURE);
         }
-    } else if (pid > 0) {  // Parent process
+    } else if (pid > 0) { // Parent process
         if (is_background) {
             // Background process
-            bg_pids[bg_count] = pid;  // Store PID of background process
-            bg_commands[bg_count] = strdup(log_entry);  // Store command
+            if (bg_count >= MAX_BG_PROCESSES) {
+                purge_oldest_background_commands();
+            }
+            bg_pids[bg_count] = pid; // Store PID of background process
+            bg_commands[bg_count] = strdup(log_entry); // Store command (log_entry has the full command)
             if (!bg_commands[bg_count]) {
                 perror("strdup");
                 exit(EXIT_FAILURE);
             }
+            command_statuses[bg_count] = "Running"; // Initially mark as running
             bg_count++;
             printf("Background PID: %d\n", pid);
         } else {
             // Foreground process: measure execution time
             struct timeval start, end;
-            gettimeofday(&start, NULL);  // Start time
+            gettimeofday(&start, NULL); // Start time
 
             int status;
-            waitpid(pid, &status, 0);  // Wait for child to finish
+            waitpid(pid, &status, 0); // Wait for child to finish
 
-            gettimeofday(&end, NULL);  // End time
+            gettimeofday(&end, NULL); // End time
             long seconds = end.tv_sec - start.tv_sec;
 
-            if (seconds > 2) { 
+            if (seconds > 2) {
                 printf("<%s@%s:~ %s : %ld seconds>\n", get_username(), get_system_name(), log_entry, seconds);
             }
+
+            // For foreground commands, store the command as terminated
+            if (bg_count >= MAX_BG_PROCESSES) {
+                purge_oldest_background_commands();
+            }
+            bg_pids[bg_count] = pid;
+            bg_commands[bg_count] = strdup(log_entry);
+            command_statuses[bg_count] = "Terminated";
+            bg_count++;
         }
     } else {
         perror("fork");
@@ -447,35 +472,28 @@ void process_command(char *input) {
 }
 
 void activities() {
-    printf("Current processes spawned by the shell:\n");
-
+    // Update process statuses
     for (int i = 0; i < bg_count; i++) {
         int status;
-        pid_t result = waitpid(bg_pids[i], &status, WNOHANG); // Non-blocking wait
-
-        const char *state;
+        pid_t result = waitpid(bg_pids[i], &status, WNOHANG);
+        
+        // If the process is still running
         if (result == 0) {
-            // Process is still running
-            state = "Running";
-        } else if (result == -1) {
-            // Handle error
-            #include <errno.h> // Include the header file that defines ESRCH
-
-            if (errno == ESRCH) {
-                // Process does not exist
-                continue; // Skip this process
-            } else {
-                perror("waitpid"); // Print error if not ESRCH
-                continue; // Skip this process
-            }
-        } else {
-            // Process has terminated
-            state = "Terminated";
-            // Optionally, you could remove it from bg_pids and bg_commands here
-            // Or update your process list if you have one
+            command_statuses[i] = "Running";
         }
+        // If the process has stopped
+        else if (WIFSTOPPED(status)) {
+            command_statuses[i] = "Stopped";
+        }
+        // If the process has terminated
+        else {
+            command_statuses[i] = "Terminated";
+        }
+    }
 
-        // Print process information
-        printf("[%d] : %s - %s\n", bg_pids[i], bg_commands[i], state);
+    // Print out the processes
+    for (int i = 0; i < bg_count; i++) {
+        printf("[%d] : %s - %s\n", bg_pids[i], bg_commands[i], command_statuses[i]);
     }
 }
+
