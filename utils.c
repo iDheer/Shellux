@@ -14,11 +14,22 @@
 #include <libgen.h>    // For dirname()
 #include <fcntl.h>
 
+
 #define MAX_BG_PROCESSES 1024
 
 pid_t bg_pids[MAX_BG_PROCESSES];
 char *bg_commands[MAX_BG_PROCESSES];
 int bg_count = 0; // Keep track of number of background processes
+
+typedef struct Process {
+    pid_t pid;            // Process ID
+    char command[256];    // Command name
+    char state[10];       // Process state: "Running" or "Stopped"
+} Process;
+
+#define MAX_PROCESSES 100 // Adjust size as needed
+Process process_list[MAX_PROCESSES];
+int process_count = 0;
 
 char *shell_home_directory; // Global variable to store the shell home directory
 
@@ -110,8 +121,11 @@ void execute_command(char *cmd, int is_background) {
         snprintf(log_entry + strlen(log_entry), sizeof(log_entry) - strlen(log_entry), " %s", args[i]);
     }
 
-    // Handle built-in commands (similar to your existing code)
-    if (strcmp(args[0], "hop") == 0) {
+    // Handle built-in commands
+    if (strcmp(args[0], "activities") == 0) {
+        activities();  // Call the activities function
+        return;  // Skip further processing
+    } else if (strcmp(args[0], "hop") == 0) {
         hop(args, argc);
         return;
     } else if (strcmp(args[0], "reveal") == 0) {
@@ -379,20 +393,27 @@ void process_command(char *input) {
         command = strtok(NULL, ";");
     }
 
-    // Iterate over each command, abhi tak commands array mein commands split ho chuke hain on the basis of just ';' (which had been pehle cleaned off all the extra white spaces in the first or back )
+    // Iterate over each command
     for (int i = 0; i < command_count; i++) {
-        // Check for background process indication
         char *final_command = commands[i];
         int is_background = 0;
 
         // Trim whitespace from the command
         final_command = trim_whitespace(final_command);
 
-        // Check if the command is a background process
-        if (strcmp(final_command + strlen(final_command) - 1, "&") == 0) {
+        // Check for the activities command
+        if (strcmp(final_command, "activities") == 0) {
+            activities(); // Call the activities function to display process list
+            continue; // Skip executing further commands
+        }
+
+        // Search for '&' within the command
+        char *ampersand_position = strchr(final_command, '&');
+        if (ampersand_position != NULL) {
             is_background = 1;
-            final_command[strlen(final_command) - 1] = '\0'; // Remove '&' from command
-            final_command = trim_whitespace(final_command); // Trim again
+            *ampersand_position = '\0'; // Split the command at '&'
+            final_command = trim_whitespace(final_command); // Trim again to clean up after '&'
+            // printf("Background process detected: %s\n", final_command);
         }
 
         // Split the command into piped commands
@@ -413,6 +434,48 @@ void process_command(char *input) {
             // Multiple piped commands
             execute_piped_commands(piped_commands, piped_command_count, is_background);
         }
+
+        // If there's another command after '&' (which wasn't split by ';'), execute it in the foreground
+        if (ampersand_position != NULL && *(ampersand_position + 1) != '\0') {
+            char *remaining_command = trim_whitespace(ampersand_position + 1);
+            if (strlen(remaining_command) > 0) {
+                // printf("Foreground part after '&': %s\n", remaining_command);
+                process_command(remaining_command); // Process the remaining command
+            }
+        }
     }
 }
 
+void activities() {
+    printf("Current processes spawned by the shell:\n");
+
+    for (int i = 0; i < bg_count; i++) {
+        int status;
+        pid_t result = waitpid(bg_pids[i], &status, WNOHANG); // Non-blocking wait
+
+        const char *state;
+        if (result == 0) {
+            // Process is still running
+            state = "Running";
+        } else if (result == -1) {
+            // Handle error
+            #include <errno.h> // Include the header file that defines ESRCH
+
+            if (errno == ESRCH) {
+                // Process does not exist
+                continue; // Skip this process
+            } else {
+                perror("waitpid"); // Print error if not ESRCH
+                continue; // Skip this process
+            }
+        } else {
+            // Process has terminated
+            state = "Terminated";
+            // Optionally, you could remove it from bg_pids and bg_commands here
+            // Or update your process list if you have one
+        }
+
+        // Print process information
+        printf("[%d] : %s - %s\n", bg_pids[i], bg_commands[i], state);
+    }
+}

@@ -3,18 +3,19 @@
 
 extern char *shell_home_directory; // Global variable for the shell home directory
 
+void activities();
 char* get_username();
 char* get_system_name();
-void tokenize_command(char *command, char *args[]);
 char *trim_whitespace(char *str);
-void execute_command(char *cmd, int is_background);
-void execute_piped_commands(char *piped_commands[], int count, int is_background);
 void process_command(char *input);
+void reveal(char **args, int argc);
+void add_to_log(const char *command);
 void initialize_shell_home_directory(); 
 int is_home_directory(const char *cwd);
-void reveal(char **args, int argc);
 void log_command(char **args, int argc);
-void add_to_log(const char *command);
+void tokenize_command(char *command, char *args[]);
+void execute_command(char *cmd, int is_background);
+void execute_piped_commands(char *piped_commands[], int count, int is_background);
 
 
 #endif
