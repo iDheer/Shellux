@@ -1,10 +1,5 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
-#include <pwd.h>
-#include <sys/utsname.h>
 #include "utils.h"
+#include "commands.h"
 #include "prompt.h"
 
 void display_prompt() {

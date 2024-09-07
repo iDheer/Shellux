@@ -1,7 +1,7 @@
 #ifndef UTILS_H
 #define UTILS_H
 
-extern char *shell_home_directory; // Global variable for the shell home directory
+#include "globals.h"
 
 void activities();
 char* get_username();

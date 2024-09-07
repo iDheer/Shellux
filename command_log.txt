@@ -1,7 +1,15 @@
-sleep 10 & sleep 7 & sleep 5; actvities
+sleep 10
+clar
+sleep 10
+sleep 5 &
+hop .
+hop ..
+hop.
+hop ..
+hop .
+'
 
-sleep 10 & sleep 7 & sleep 5 &; activties
-activtities
-activities
-activtities
-q
+sleep 10
+reveal
+hop
+ru

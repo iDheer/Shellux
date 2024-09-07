@@ -1,29 +1,6 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
-#include <limits.h>
-#include "commands.h"
 #include "utils.h"
-#include <dirent.h>
-#include <sys/stat.h>
-#include <pwd.h>
-#include <grp.h>
-#include <time.h>
-#include <errno.h>
-#include<fcntl.h>
-#include <libgen.h>    // For dirname()
-#include <sys/stat.h>
-#include <libgen.h>
-#include <ctype.h>
-#include <limits.h> // For PATH_MAX again 
-#include <linux/limits.h> // For PATH_MAX
-
-#define LOG_FILE_PATH "command_log.txt"
-#define MAX_LOG_SIZE 15
-#define MAX_PATH 4096
-#define MAX_COLORED_PATH (5016)  // Extra space for color codes
-#define MAX_RESULTS 1000
+#include "commands.h"
+#include "prompt.h"
 
 static char prev_dir[PATH_MAX] = ""; // Global variable for previous directory
 char *command_log[MAX_LOG_SIZE];
@@ -633,3 +610,4 @@ void seek(char **args, int argc) {
         }
     }
 }
+
