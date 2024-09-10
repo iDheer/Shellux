@@ -1,15 +1,15 @@
+sleep 10100
+sleep 6
+activities
+op
+q
+qclear
+clear
+valgrind
+./my_shell
+activties
+activities
+clear
+sleep 3
+q
 sleep 10
-clar
-sleep 10
-sleep 5 &
-hop .
-hop ..
-hop.
-hop ..
-hop .
-'
-
-sleep 10
-reveal
-hop
-ru

@@ -40,7 +40,8 @@ typedef struct {
 } ProcessInfo;
 
 // Declaration of global variables
-extern int bg_count;                       // Counter for background processes
+extern pid_t foreground_pid;                   // PID of the current foreground process
+extern int bg_count;                // Counter for background processes
 extern ProcessInfo bg_processes[MAX_BG_PROCESSES]; // Array of ProcessInfo structures
 extern char *shell_home_directory;         // Global variable to store the shell's home directory
 

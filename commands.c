@@ -611,3 +611,50 @@ void seek(char **args, int argc) {
     }
 }
 
+// Function to send signal to a process
+void ping_process(pid_t pid, int signal_number) {
+    // Take modulo 32 of the signal number
+    int actual_signal = signal_number % 32;
+
+    // Check if the process with given PID exists
+    if (kill(pid, 0) == -1) {
+        perror("No such process found");
+        return;
+    }
+
+    // Send the signal to the process
+    if (kill(pid, actual_signal) == 0) {
+        printf("Sent signal %d to process with pid %d\n", actual_signal, pid);
+    } else {
+        perror("Failed to send signal");
+    }
+}
+
+void fg_process(pid_t pid) {
+    // Check if the process exists in the background list
+    for (int i = 0; i < bg_count; i++) {
+        if (bg_processes[i].pid == pid) {
+            // Bring process to the foreground
+            foreground_pid = pid;
+            strcpy(bg_processes[i].state, "Running"); // Update the state to Running
+            kill(pid, SIGCONT); // Continue the process in the foreground
+            printf("Process with PID %d has been brought to the foreground.\n", pid);
+            waitpid(pid, NULL, 0); // Wait for the process to finish
+            return;
+        }
+    }
+    fprintf(stderr, "No such process found\n");
+}
+
+void bg_process(pid_t pid) {
+    // Check if the process exists in the background list
+    for (int i = 0; i < bg_count; i++) {
+        if (bg_processes[i].pid == pid && strcmp(bg_processes[i].state, "Stopped") == 0) {
+            strcpy(bg_processes[i].state, "Running"); // Update the state
+            kill(pid, SIGCONT); // Continue the process in the background
+            printf("Process with PID %d is now running in the background.\n", pid);
+            return;
+        }
+    }
+    fprintf(stderr, "No such process found or process is not stopped.\n");
+}

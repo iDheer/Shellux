@@ -7,6 +7,8 @@ void save_log();
 void init_log(); 
 void clear_log();
 void cleanup_log();                
+void fg_process(pid_t pid);
+void bg_process(pid_t pid);
 void hop(char **args, int argc);
 void seek(char **args, int argc);
 void reveal(char **args, int argc); 

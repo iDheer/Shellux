@@ -2,6 +2,11 @@
 #include "commands.h"
 #include "prompt.h"
 
+// Function to update the foreground PID
+void update_foreground_pid(pid_t pid) {
+    foreground_pid = pid;
+}
+
 // Initialize the shell home directory
 void initialize_shell_home_directory() {
     shell_home_directory = getcwd(NULL, 0); // Retrieve current working directory
@@ -40,6 +45,19 @@ void purge_oldest_background_commands() {
 
     // Reduce the background process count
     bg_count -= purge_count;
+}
+
+void SIG_IGN_handler(int signum) {
+    // Do nothing
+    if(signum == SIGINT) {
+        printf("\n");
+        return;
+    }
+    if(signum == SIGTSTP) {
+        // printf("Manglam\n");
+        perror("SIGTSTP");
+        return;
+    }
 }
 
 // Execute a command with redirection and background handling
@@ -124,7 +142,43 @@ void execute_command(char *cmd, int is_background) {
     } else if (strcmp(args[0], "seek") == 0) {
         seek(args, argc);
         return;
+    } else if (strcmp(args[0], "ping") == 0) {
+        // Handle ping command
+        if (argc != 3) {
+            fprintf(stderr, "Usage: ping <pid> <signal_number>\n");
+            return;
+        }
+
+        pid_t pid = atoi(args[1]); // Convert string to PID
+        int signal_number = atoi(args[2]); // Convert string to signal number
+
+        ping_process(pid, signal_number);
+        return; // Exit this function after handling the ping command
+    } else if (strcmp(args[0], "fg") == 0) {
+        if (argc != 2) {
+            fprintf(stderr, "Usage: fg <pid>\n");
+            return;
+        }
+        pid_t pid = atoi(args[1]);
+        fg_process(pid);
+        return;
+    } else if (strcmp(args[0], "bg") == 0) {
+        if (argc != 2) {
+            fprintf(stderr, "Usage: bg <pid>\n");
+            return;
+        }
+        pid_t pid = atoi(args[1]);
+        bg_process(pid);
+        return;
     }
+
+    // Signal handling for ctrl+c and ctrl+z
+    struct sigaction sa;
+    sa.sa_handler = SIG_IGN_handler;
+    sa.sa_flags = 0;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGINT, &sa, NULL);
+    sigaction(SIGTSTP, &sa, NULL);
 
     pid_t pid = fork();
     if (pid == 0) {  // Child process
@@ -177,6 +231,8 @@ void execute_command(char *cmd, int is_background) {
             printf("Background PID: %d\n", pid);
         } else {
             // Foreground process: measure execution time
+            update_foreground_pid(pid);  // Update foreground PID
+
             struct timeval start, end;
             gettimeofday(&start, NULL); // Record start time
 
@@ -199,6 +255,8 @@ void execute_command(char *cmd, int is_background) {
             bg_processes[bg_count].command = strdup(log_entry);
             strcpy(bg_processes[bg_count].state, "Terminated");
             bg_count++;
+
+            update_foreground_pid(-1); // Reset foreground PID after command execution
         }
     } else {
         perror("fork");
