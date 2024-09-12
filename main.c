@@ -1,129 +1,141 @@
 #include "utils.h"
 #include "commands.h"
 #include "prompt.h"
-#include <signal.h>  // Include for signal handling
 
-ProcessInfo bg_processes[MAX_BG_PROCESSES]; // MAX_BG_PROCESSES is defined
-int bg_count = 0; // Initialize bg_count
+int terminal_fd;
+int bg_count = 0;
+pid_t foreground_pid = -1; 
 char* shell_home_directory;
-pid_t foreground_pid = -1; // Global variable to track the foreground process ID
+ProcessInfo bg_processes[MAX_BG_PROCESSES];
 
-void handle_sigchld(int sig) {
-    int saved_errno = errno; // Save errno to restore later
-    while (1) {
-        pid_t pid = waitpid(-1, NULL, WNOHANG); // Non-blocking wait
-        if (pid <= 0) break; // No more processes to wait for
+extern void cleanup_bg_processes() {
+    for (int i = 0; i < bg_count; i++) {
+        free(bg_processes[i].command); 
+        bg_processes[i].command = NULL; // Avoid dangling pointers
+    }
+    bg_count = 0; // Reset the background process count
+}
 
-        // Handling of finished background processes
-        printf("Background process with PID %d exited.\n", pid);
-        
-        // Update the status of the terminated process
-        for (int i = 0; i < bg_count; i++) {
-            if (bg_processes[i].pid == pid) {
-                strcpy(bg_processes[i].state, "Terminated"); // Mark as terminated
-                break; // Break once found and updated
+extern void remove_background_process(pid_t pid) {
+    for (int i = 0; i < bg_count; i++) {
+        if (bg_processes[i].pid == pid) {
+            free(bg_processes[i].command); 
+            for (int j = i; j < bg_count - 1; j++) {
+                bg_processes[j] = bg_processes[j + 1];
             }
+            bg_count--;
+            // Only set the last command to NULL if there are remaining processes
+            if (bg_count > 0) {
+                bg_processes[bg_count].command = NULL; // Set last command to NULL
+            }
+            break;
         }
     }
-    errno = saved_errno; // Restore errno
 }
 
-// void handle_sigint(int sig) {
-//     if (foreground_pid > 0) {
-//         // Send SIGINT to the foreground process
-//         kill(foreground_pid, SIGINT);
-//     }
-// }
-
-void add_background_process(pid_t pid, const char *command) {
+extern void add_to_background_processes(pid_t pid, char *command, const char *state) {
     if (bg_count < MAX_BG_PROCESSES) {
         bg_processes[bg_count].pid = pid;
-        bg_processes[bg_count].command = strdup(command); // Duplicate the command string
-        strcpy(bg_processes[bg_count].state, "Running");
+        bg_processes[bg_count].command = strdup(command);
+        if (bg_processes[bg_count].command == NULL) {
+            perror("Failed to allocate memory for command");
+            exit(EXIT_FAILURE);
+        }
+        strcpy(bg_processes[bg_count].state, state);
         bg_count++;
     } else {
-        fprintf(stderr, "Maximum number of background processes reached.\n");
+        purge_oldest_background_commands(); // Remove the oldest background process
+        add_to_background_processes(pid, command, state); // Try again
     }
 }
 
-// void handle_sigtstp(int sig) {
-//     if (foreground_pid > 0) {
-//         printf("Sending SIGTSTP to process with PID %d\n", foreground_pid);
-//         // Send SIGTSTP to stop the foreground process
-//         kill(foreground_pid, SIGTSTP);
-        
-//         // Update the status of the stopped process
-//         add_background_process(foreground_pid, "foreground process");
+void handle_sigchld(int sig) {
+    int saved_errno = errno;
+    int status;
+    pid_t pid;
 
-//         for(int i = 0; i < bg_count; i++) {
-//             if (bg_processes[i].pid == foreground_pid) {
-//                 strcpy(bg_processes[i].state, "Stopped"); // Mark as stopped
-//                 break; // Break once found and updated
-//             }
-//         }
+    while ((pid = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0) {
+        if (WIFEXITED(status) || WIFSIGNALED(status)) {
+            printf("Process with PID %d exited.\n", pid);
+            remove_background_process(pid); 
+        } else if (WIFSTOPPED(status)) {
+            printf("Process with PID %d was stopped.\n", pid);
+            add_to_background_processes(pid, get_command_name(pid), "Stopped");
+        }
+    }
+    errno = saved_errno;
+}
 
-//         // Add the stopped process to the background list
-
-//         printf("Process with PID %d has been moved to the background and stopped.\n", foreground_pid);
-//         foreground_pid = -1; // Reset foreground PID
-//         tcsetpgrp(STDIN_FILENO, getpid()); // Regain control of terminal
-//     }
-// }
-
-void cleanup_bg_processes() {
-    for (int i = 0; i < bg_count; i++) {
-        free(bg_processes[i].command); // Free the allocated command string
+void custom_handler(int signum) {
+    if (signum == SIGINT) { // Ctrl + C
+        if (foreground_pid > 0) {
+            kill(foreground_pid, SIGINT); // Terminate foreground process
+            printf("Terminated foreground process (PID: %d)\n", foreground_pid);
+            update_foreground_pid(-1); // Reset foreground PID
+        } else {
+            printf("\nNo foreground process to terminate\n");
+        }
+    } 
+    else if (signum == SIGTSTP) { // Ctrl + Z
+        if (foreground_pid > 0) {
+            kill(foreground_pid, SIGTSTP); // Stop foreground process
+            printf("Stopped foreground process (PID: %d)\n", foreground_pid);
+            add_to_background_processes(foreground_pid, get_command_name(foreground_pid), "Stopped");
+            update_foreground_pid(-1); // Reset foreground PID
+        } else {
+            printf("\nNo foreground process to stop\n");
+        }
     }
 }
 
 int main() {
-    initialize_shell_home_directory(); 
     char command[4096];
-
-    // Initialize global variables
-    bg_count = 0; // Ensure to initialize the counter
     init_log(); 
+    setup_terminal();
+    signal(SIGCHLD, handle_sigchld); 
+    initialize_shell_home_directory(); 
 
-    // Set signal handlers
-    if (signal(SIGCHLD, handle_sigchld) == SIG_ERR) {
-        perror("Failed to set SIGCHLD handler");
+    // Set signal handlers for SIGINT and SIGTSTP
+    struct sigaction sa;
+    sa.sa_handler = custom_handler;
+    sa.sa_flags = 0;
+    sigemptyset(&sa.sa_mask);
+
+    if (sigaction(SIGINT, &sa, NULL) == -1) {
+        perror("Failed to set SIGINT handler");
         exit(EXIT_FAILURE);
     }
 
-    // if (signal(SIGINT, handle_sigint) == SIG_ERR) {
-    //     perror("Failed to set SIGINT handler");
-    //     exit(EXIT_FAILURE);
-    // }
-
-    // if (signal(SIGTSTP, handle_sigtstp) == SIG_ERR) {
-    //     perror("Failed to set SIGTSTP handler");
-    //     exit(EXIT_FAILURE);
-    // }
+    if (sigaction(SIGTSTP, &sa, NULL) == -1) {
+        perror("Failed to set SIGTSTP handler");
+        exit(EXIT_FAILURE);
+    }
 
     while (1) {
         display_prompt();  
         if (fgets(command, sizeof(command), stdin) != NULL) {
-            // Remove trailing newline characters
-            command[strcspn(command, "\n")] = 0;
+            command[strcspn(command, "\n")] = 0; // Remove trailing newline characters
 
             if (strcmp(command, "exit") == 0) { // Self-defined exit command
                 break;
             }
-            add_to_log(command);  // Enter the command as it is in the log
-            process_command(command);  // Main shell logic
+            add_to_log(command); // Enter the command in the log
+            process_command(command); // Main shell logic
         } else {
             if (feof(stdin)) {
                 // Log out and kill all background processes
                 for (int i = 0; i < bg_count; i++) {
-                    kill(bg_processes[i].pid, SIGTERM); // Send SIGTERM to background processes
+                    if (kill(bg_processes[i].pid, SIGTERM) == -1) {
+                        perror("Failed to terminate background process");
+                    }
                 }
                 break; // Exit the shell
             } else {
-                perror("Error reading command");
+                continue; // Ignore empty input
             }
         }
     }
-    
+
     cleanup_bg_processes(); // Clean up allocated memory for background processes
     cleanup_log(); // Save the log at shutdown
     return 0;

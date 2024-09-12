@@ -2,9 +2,34 @@
 #include "commands.h"
 #include "prompt.h"
 
+void add_to_background_processes(pid_t pid, const char *log_entry, const char *state);
+
+void setup_terminal() {
+    terminal_fd = fileno(stdin); // Get the terminal's file descriptor
+}
+
 // Function to update the foreground PID
 void update_foreground_pid(pid_t pid) {
     foreground_pid = pid;
+}
+
+char* get_command_name(pid_t pid) {
+    char path[40];
+    snprintf(path, sizeof(path), "/proc/%d/comm", pid);
+    
+    FILE *file = fopen(path, "r");
+    if (!file) {
+        perror("fopen");
+        return NULL;
+    }
+
+    char *command = malloc(256); // Allocate memory for the command name
+    if (fgets(command, 256, file) != NULL) {
+        // Remove the newline character at the end
+        command[strcspn(command, "\n")] = 0;
+    }
+    fclose(file);
+    return command;
 }
 
 // Initialize the shell home directory
@@ -47,21 +72,9 @@ void purge_oldest_background_commands() {
     bg_count -= purge_count;
 }
 
-void SIG_IGN_handler(int signum) {
-    // Do nothing
-    if(signum == SIGINT) {
-        printf("\n");
-        return;
-    }
-    if(signum == SIGTSTP) {
-        // printf("Manglam\n");
-        perror("SIGTSTP");
-        return;
-    }
-}
-
 // Execute a command with redirection and background handling
 void execute_command(char *cmd, int is_background) {
+
     char *args[4096];
     char *input_file = NULL;
     char *output_file = NULL;
@@ -170,105 +183,94 @@ void execute_command(char *cmd, int is_background) {
         pid_t pid = atoi(args[1]);
         bg_process(pid);
         return;
+    } else if (strcmp(args[0], "iMan") == 0) {
+        if (argc != 2) {
+            fprintf(stderr, "Usage: iman <command_name>\n");
+            return;
+        }
+        iMan(args[1]);  // Call the iMan function with the command argument
+        return;
+    }
+    else if (strcmp(args[0], "neonate") == 0) {
+        if (argc != 3 || strcmp(args[1], "-n") != 0) {
+            fprintf(stderr, "Usage: neonate -n [time_arg]\n");
+            return;
+        }
+        int time_arg = atoi(args[2]);
+        neonate(time_arg);
+        return;
     }
 
-    // Signal handling for ctrl+c and ctrl+z
-    struct sigaction sa;
-    sa.sa_handler = SIG_IGN_handler;
-    sa.sa_flags = 0;
-    sigemptyset(&sa.sa_mask);
-    sigaction(SIGINT, &sa, NULL);
-    sigaction(SIGTSTP, &sa, NULL);
-
     pid_t pid = fork();
+
     if (pid == 0) {  // Child process
-        // Handle input redirection
+        signal(SIGINT, SIG_DFL);  // Reset to default handlers
+        signal(SIGTSTP, SIG_DFL);  // Reset to default handlers
+
+        if (is_background) {
+            setpgid(0, 0);  // Create a new process group for the background process
+        } else {
+            setpgid(getpid(), getpid());  // Set the child process as the leader of its group
+        }
+
+        // Input redirection
         if (input_file != NULL) {
             int fd_in = open(input_file, O_RDONLY);
             if (fd_in < 0) {
                 perror("No such input file found!");
                 exit(EXIT_FAILURE);
             }
-            dup2(fd_in, STDIN_FILENO);  // Redirect stdin to the input file
+            dup2(fd_in, STDIN_FILENO);  
             close(fd_in);
         }
 
-        // Handle output redirection
+        // Output redirection
         if (output_file != NULL) {
-            int fd_out;
-            if (append_mode) {
-                fd_out = open(output_file, O_WRONLY | O_CREAT | O_APPEND, 0644);
-            } else {
-                fd_out = open(output_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-            }
+            int fd_out = append_mode ? open(output_file, O_WRONLY | O_CREAT | O_APPEND, 0644) 
+                                     : open(output_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
             if (fd_out < 0) {
                 perror("Failed to open output file!");
                 exit(EXIT_FAILURE);
             }
-            dup2(fd_out, STDOUT_FILENO);  // Redirect stdout to the output file
+            dup2(fd_out, STDOUT_FILENO);  
             close(fd_out);
         }
 
         // Execute the command
         if (execvp(args[0], args) == -1) {
-            perror("execvp");  // Execution failed
+            perror("execvp");
             exit(EXIT_FAILURE);
         }
-    } else if (pid > 0) { // Parent process
-        if (is_background) {
-            // Handle background process
-            if (bg_count >= MAX_BG_PROCESSES) {
-                purge_oldest_background_commands();
-            }
-            bg_processes[bg_count].pid = pid; // Store the PID of the background process
-            bg_processes[bg_count].command = strdup(log_entry); // Store the command (log_entry contains the full command)
-            if (!bg_processes[bg_count].command) {
-                perror("strdup");
-                exit(EXIT_FAILURE);
-            }
-            strcpy(bg_processes[bg_count].state, "Running"); // Initially mark as running
-            bg_count++;
-            printf("Background PID: %d\n", pid);
+
+    } else if (pid > 0) {  // Parent process
+        // Update the foreground PID only if it's not a background process
+        if (!is_background) {
+            update_foreground_pid(pid);
         } else {
-            // Foreground process: measure execution time
-            update_foreground_pid(pid);  // Update foreground PID
-
-            struct timeval start, end;
-            gettimeofday(&start, NULL); // Record start time
-
-            int status;
-            waitpid(pid, &status, 0); // Wait for the child process to finish
-
-            gettimeofday(&end, NULL); // Record end time
-
-            long seconds = end.tv_sec - start.tv_sec;
-
-            if (seconds > 2) {
-                printf("<%s@%s:~ %s : %ld seconds>\n", get_username(), get_system_name(), log_entry, seconds);
-            }
-
-            // For foreground commands, mark the command as terminated
-            if (bg_count >= MAX_BG_PROCESSES) {
-                purge_oldest_background_commands();
-            }
-            bg_processes[bg_count].pid = pid;
-            bg_processes[bg_count].command = strdup(log_entry);
-            strcpy(bg_processes[bg_count].state, "Terminated");
-            bg_count++;
-
-            update_foreground_pid(-1); // Reset foreground PID after command execution
+            setpgid(pid, pid); // Set process group in parent for background
+            add_to_background_processes(pid, log_entry, "Running");
+            printf("Background PID: %d\n", pid);
         }
+
     } else {
         perror("fork");
     }
 }
 
 // Tokenize the command string
-void tokenize_command(char *command, char **args) {
+void tokenize_command(char *command, char **args, int *is_background) {
     char *ptr = command;
     int arg_count = 0;
     char *token;
     char *end_ptr;
+
+    // Check for background execution symbol
+    if (command[strlen(command) - 1] == '&') {
+        *is_background = 1;  // Set background flag
+        command[strlen(command) - 1] = '\0';  // Remove '&' from command
+    } else {
+        *is_background = 0;
+    }
 
     while (*ptr) {
         // Skip whitespace
@@ -314,11 +316,10 @@ void execute_piped_commands(char *piped_commands[], int count, int is_background
 
     // Parse redirection from the first and last command
     if (strchr(piped_commands[0], '<')) {
-        char *first_cmd = piped_commands[0];
-        input_file = strtok(first_cmd, "<");
+        char *first_cmd = strtok(piped_commands[0], "<");
         input_file = strtok(NULL, "<");
         input_file = trim_whitespace(input_file);
-        piped_commands[0] = first_cmd;  // Update the command without redirection part
+        piped_commands[0] = trim_whitespace(first_cmd);  // Update the command without redirection part
     }
 
     if (strchr(piped_commands[count - 1], '>')) {
@@ -332,7 +333,7 @@ void execute_piped_commands(char *piped_commands[], int count, int is_background
             output_file = strtok(NULL, ">");
         }
         output_file = trim_whitespace(output_file);
-        piped_commands[count - 1] = last_cmd;  // Update the command without redirection part
+        piped_commands[count - 1] = trim_whitespace(last_cmd);  // Update the command without redirection part
     }
 
     // Create pipes
@@ -351,6 +352,11 @@ void execute_piped_commands(char *piped_commands[], int count, int is_background
         }
 
         if (pids[i] == 0) { // Child process
+            // Set the process group ID to the PID of the first child
+            if (i == 0) {
+                setpgid(0, 0);
+            }
+
             // Handle input redirection for the first command
             if (i == 0 && input_file != NULL) {
                 int fd_in = open(input_file, O_RDONLY);
@@ -393,7 +399,8 @@ void execute_piped_commands(char *piped_commands[], int count, int is_background
 
             // Tokenize and execute command
             char *args[4096];
-            tokenize_command(piped_commands[i], args);
+            int background_flag = 0; // Flag to check for background execution
+            tokenize_command(piped_commands[i], args, &background_flag); // Updated call
             if (execvp(args[0], args) == -1) {
                 perror("execvp");
                 exit(EXIT_FAILURE);
@@ -464,13 +471,12 @@ void process_command(char *input) {
             continue; // Skip executing further commands
         }
 
-        // Search for '&' within the command
+        // Check for '&' to determine background process
         char *ampersand_position = strchr(final_command, '&');
         if (ampersand_position != NULL) {
             is_background = 1;
             *ampersand_position = '\0'; // Split the command at '&'
             final_command = trim_whitespace(final_command); // Trim again to clean up after '&'
-            // printf("Background process detected: %s\n", final_command);
         }
 
         // Split the command into piped commands
@@ -479,7 +485,7 @@ void process_command(char *input) {
 
         char *pipe_cmd = strtok(final_command, "|");
         while (pipe_cmd != NULL) {
-            piped_commands[piped_command_count++] = pipe_cmd;
+            piped_commands[piped_command_count++] = trim_whitespace(pipe_cmd); // Trim each piped command
             pipe_cmd = strtok(NULL, "|");
         }
 
@@ -492,11 +498,10 @@ void process_command(char *input) {
             execute_piped_commands(piped_commands, piped_command_count, is_background);
         }
 
-        // If there's another command after '&' (which wasn't split by ';'), execute it in the foreground
-        if (ampersand_position != NULL && *(ampersand_position + 1) != '\0') {
+        // If there's another command after '&' (which wasn't split by ';'), process it
+        if (is_background && *(ampersand_position + 1) != '\0') {
             char *remaining_command = trim_whitespace(ampersand_position + 1);
             if (strlen(remaining_command) > 0) {
-                // printf("Foreground part after '&': %s\n", remaining_command);
                 process_command(remaining_command); // Process the remaining command
             }
         }
@@ -508,12 +513,27 @@ void activities() {
     for (int i = 0; i < bg_count; i++) {
         int status;
         pid_t result = waitpid(bg_processes[i].pid, &status, WNOHANG);
-        
+
         // If the process is still running
         if (result == 0) {
-            strcpy(bg_processes[i].state, "Running"); // Update state to Running
-        } else if (result > 0) {
-            strcpy(bg_processes[i].state, "Stopped"); // Update state to Stopped
+            // If this process was previously marked as stopped and hasn't been updated yet,
+            // you may need to ensure it retains the "Stopped" state correctly.
+            if (strcmp(bg_processes[i].state, "Stopped") == 0) {
+                // The process was stopped previously
+                strcpy(bg_processes[i].state, "Stopped");
+            } else {
+                strcpy(bg_processes[i].state, "Running");
+            }
+        }
+        // If the process has terminated
+        else if (result > 0) {
+            if (WIFEXITED(status) || WIFSIGNALED(status)) {
+                strcpy(bg_processes[i].state, "Terminated"); // Process has exited or was killed by a signal
+            }
+            // If the process is stopped (for example, via Ctrl-Z), in my case this else if block is not needed though, but will keep it due to all case handling
+            else if (WIFSTOPPED(status)) {
+                strcpy(bg_processes[i].state, "Stopped"); // Process was stopped
+            }
         }
     }
 
@@ -522,3 +542,4 @@ void activities() {
         printf("[%d] : %s - %s\n", bg_processes[i].pid, bg_processes[i].command, bg_processes[i].state);
     }
 }
+
