@@ -7,7 +7,7 @@ static volatile int running = 1;  // Flag to control the loop
 char *command_log[MAX_LOG_SIZE];
 int log_count = 0;
 
-void add_to_background_processes(pid_t pid, char *command, const char *state);
+void add_to_background_processes(pid_t pid, char *command);
 
     void hop(char **args, int argc) {
         char *target_dir;
@@ -421,71 +421,66 @@ void reveal(char **args, int argc) {
 }
 
 void proclore(char **args, int argc) {
-    char proc_path[PATH_MAX];
-    char buffer[1024];
-    char stat_path[PATH_MAX];
-    int pid = getpid();  // Default to the current shell process if no PID is provided
-
-    if (argc == 2) {
-        pid = atoi(args[1]);
-    }
-
-    // Construct the /proc/[pid] path
-    snprintf(proc_path, sizeof(proc_path), "/proc/%d", pid);
-
-    if (snprintf(stat_path, sizeof(stat_path), "%s/stat", proc_path) >= sizeof(stat_path)) {
-        fprintf(stderr, "Path too long to append /stat\n");
+    if (argc != 2) {
+        printf("Usage: proclore <pid>\n");
         return;
     }
+    // extract pid from args and argc
+    int pid = atoi(args[1]);
+    if (pid <= 0) {
+        printf("Invalid PID\n");
+        return;
+    } 
 
-    // Open and read the /proc/[pid]/stat file
-    FILE *stat_file = fopen(stat_path, "r");
-    if (stat_file == NULL) {
-        perror("fopen");
+    char path[4096];
+    char status[4096];
+    char state[4096];
+    char exec_path[4096];
+    long int vmsize;
+
+    sprintf(path, "/proc/%d/status", pid);
+    FILE *fp = fopen(path, "r");
+    if (fp == NULL) {
+        perror("Error opening file");
         return;
     }
+    //print pid
+    printf("Pid: %d\n",pid);
 
-    if (fgets(buffer, sizeof(buffer), stat_file) != NULL) {
-        int process_id, pgrp, session, tty_nr, tpgid;
-        char comm[256], state;
-        unsigned long vsize;
-
-        sscanf(buffer, "%d %s %c %*d %d %d %d %d %*u %*u %*u %*u %*u %*u %*u %*u %*u %*u %*u %*u %*u %*u %lu",
-               &process_id, comm, &state, &pgrp, &session, &tty_nr, &tpgid, &vsize);
-
-        // Determine if the process is foreground/background
-        char *status_str = "Unknown";
-        if (session == pgrp && tty_nr != 0) {
-            status_str = (tpgid == pid) ? "R+" : "R";
-        } else {
-            status_str = (state == 'S') ? "S" : "R";
+    //print process group
+    pid_t pgid = getpgid(pid);
+    if (pgid < 0) {
+        perror("getpgid");
+        return;
+    }
+    printf("Process Group: %d\n", pgid);
+    //print state and vmsize using status file
+    while (fgets(status, sizeof(status), fp) != NULL) {
+        
+         if (strncmp(status, "State:", 6) == 0) {
+           if (pgid == pid &&(status[7]=='R' || status[7]=='S')) {
+            printf("State: %c+\n",status[7]);
+            } else {
+              printf("State: %c\n",status[7]);
+            }
         }
-
-        // Print the process information
-        printf("pid : %d\n", process_id);
-        printf("process status : %s\n", status_str);
-        printf("Process Group : %d\n", pgrp);
-        printf("Virtual memory : %lu\n", vsize);
-
-        // Get the executable path
-        char exe_path[PATH_MAX];
-        if (snprintf(exe_path, sizeof(exe_path), "%s/exe", proc_path) >= sizeof(exe_path)) {
-            fprintf(stderr, "Path too long to append /exe\n");
-            fclose(stat_file);
-            return;
+        else if (strncmp(status, "VmSize:", 7) == 0) {
+            printf("%s", status);
         }
+    }
 
-        ssize_t len = readlink(exe_path, buffer, sizeof(buffer) - 1);
-        if (len != -1) {
-            buffer[len] = '\0';
-            printf("executable path : %s\n", buffer);
-        } else {
-            printf("executable path : unknown\n");
-        }
+    fclose(fp);
+   
+    //print executable path
+    sprintf(path, "/proc/%d/exe", pid);
+    ssize_t len = readlink(path, exec_path, sizeof(exec_path) - 1);
+    if (len != -1) {
+        exec_path[len] = '\0';
+        printf("Executable Path: %s\n", exec_path);
     } else {
-        printf("Failed to read process information.\n");
+        perror("Ececutable path");
     }
-    fclose(stat_file);
+    
 }
 
 #define BLUE "\033[1;34m"
@@ -610,110 +605,6 @@ void seek(char **args, int argc) {
             printf("No match found!\n");
         }
     }
-}
-
-// Function to send signal to a process
-void ping_process(pid_t pid, int signal_number) {
-    // Take modulo 32 of the signal number
-    int actual_signal = signal_number % 32;
-
-    // Check if the process with given PID exists
-    if (kill(pid, 0) == -1) {
-        perror("No such process found");
-        return;
-    }
-
-    // Send the signal to the process
-    if (kill(pid, actual_signal) == 0) {
-        printf("Sent signal %d to process with pid %d\n", actual_signal, pid);
-    } else {
-        perror("Failed to send signal");
-    }
-}
-
-void fg_process(pid_t pid) {
-    int found = 0;
-
-    for (int i = 0; i < bg_count; i++) {
-        if (bg_processes[i].pid == pid) {
-            found = 1;
-            foreground_pid = pid;
-            strcpy(bg_processes[i].state, "Running");
-
-            printf("Giving terminal control to PID %d\n", pid);
-            // Give terminal control to the process we're bringing to the foreground
-            tcsetpgrp(terminal_fd, pid);
-
-            // Remove the process from the background list
-            for (int j = i; j < bg_count - 1; j++) {
-                bg_processes[j] = bg_processes[j + 1];
-            }
-            bg_count--;
-
-            kill(pid, SIGCONT); // Continue the process if it was stopped
-            printf("Process with PID %d has been brought to the foreground.\n", pid);
-
-            int status;
-            while (1) {
-                // Wait for the process state to change
-                pid_t result = waitpid(pid, &status, WUNTRACED | WCONTINUED);
-
-                if (result == -1) {
-                    perror("waitpid failed");
-                    break;
-                }
-
-                if (WIFEXITED(status)) {
-                    // Process has exited normally
-                    printf("Process with PID %d has exited.\n", pid);
-                    break;
-                }
-
-                if (WIFSIGNALED(status)) {
-                    // Process was killed by a signal
-                    printf("Process with PID %d was killed by signal %d.\n", pid, WTERMSIG(status));
-                    break;
-                }
-
-                if (WIFSTOPPED(status)) {
-                    // Process was stopped (e.g., via Ctrl-Z)
-                    printf("Process with PID %d was stopped.\n", pid);
-                    add_to_background_processes(pid, get_command_name(pid), "Stopped");
-                    break;
-                }
-
-                if (WIFCONTINUED(status)) {
-                    // Process was resumed (e.g., via SIGCONT)
-                    printf("Process with PID %d was continued.\n", pid);
-                }
-            }
-
-            // After the foreground process exits or stops, restore terminal control to the shell
-            printf("Restoring terminal control to shell (PID %d)\n", getpid());
-            tcsetpgrp(terminal_fd, getpid());
-
-            // Reset the foreground PID
-            foreground_pid = -1;
-            return;
-        }
-    }
-
-    if (!found) {
-        fprintf(stderr, "No such process found with PID %d\n", pid);
-    }
-}
-
-void bg_process(pid_t pid) {
-    // Check if the process exists in the background list
-    for (int i = 0; i < bg_count; i++) {
-        if (bg_processes[i].pid == pid && strcmp(bg_processes[i].state, "Stopped") == 0) {
-            strcpy(bg_processes[i].state, "Running"); // Update the state to Running
-            kill(pid, SIGCONT); // Continue the process in the background
-            printf("Process with PID %d is now running in the background.\n", pid);
-            return;
-        }
-    }
-    fprintf(stderr, "No such process found or process is not stopped.\n");
 }
 
 // Function to handle exit signals
@@ -875,4 +766,108 @@ void iMan(char *cmd) {
     }
 
     close(sockfd);  // Close the socket
+}
+
+// Function to send signal to a process
+void ping_process(pid_t pid, int signal_number) {
+    // Take modulo 32 of the signal number
+    int actual_signal = signal_number % 32;
+
+    // Check if the process with given PID exists
+    if (kill(pid, 0) == -1) {
+        perror("No such process found");
+        return;
+    }
+
+    // Send the signal to the process
+    if (kill(pid, actual_signal) == 0) {
+        printf("Sent signal %d to process with pid %d\n", actual_signal, pid);
+    } else {
+        perror("Failed to send signal");
+    }
+}
+    
+void fg_process(pid_t pid) {
+    int found = 0;
+
+    for (int i = 0; i < bg_count; i++) {
+        if (bg_processes[i].pid == pid) {
+            found = 1;
+            foreground_pid = pid;
+            strcpy(bg_processes[i].state, "Running");
+
+            printf("Giving terminal control to PID %d\n", pid);
+
+            // Remove the process from the background list
+            for (int j = i; j < bg_count - 1; j++) {
+                bg_processes[j] = bg_processes[j + 1];
+            }
+            bg_count--;
+
+            kill(pid, SIGCONT); // Continue the process if it was stopped
+            printf("Process with PID %d has been brought to the foreground.\n", pid);
+
+            int status;
+            while (1) {
+                // Wait for the process state to change
+                pid_t result = waitpid(pid, &status, WUNTRACED | WCONTINUED);
+
+                if (result == -1) {
+                    perror("waitpid failed");
+                    break;
+                }
+
+                if (WIFEXITED(status)) {
+                    // Process has exited normally
+                    printf("Process with PID %d has exited.\n", pid);
+                    break;
+                }
+
+                if (WIFSIGNALED(status)) {
+                    // Process was killed by a signal
+                    printf("Process with PID %d was killed by signal %d.\n", pid, WTERMSIG(status));
+                    break;
+                }
+
+                if (WIFSTOPPED(status)) {
+                    // Process was stopped (e.g., via Ctrl-Z)
+                    printf("Process with PID %d was stopped.\n", pid);
+                    add_to_background_processes(pid, get_command_name(pid));
+                    break;
+                }
+
+                if (WIFCONTINUED(status)) {
+                    // Process was resumed (e.g., via SIGCONT)
+                    printf("Process with PID %d was continued.\n", pid);
+                }
+            }
+
+            // Reset the foreground PID
+            foreground_pid = -1;
+            return;
+        }
+    }
+
+    if (!found) {
+        fprintf(stderr, "No such process found with PID %d\n", pid);
+    }
+}
+
+void bg_process(pid_t pid) {
+    // Check if the process exists in the background list
+    for (int i = 0; i < bg_count; i++) {
+        if (bg_processes[i].pid == pid) {
+            // check if it was a stopped process
+            if (strcmp(bg_processes[i].state, "Stopped") == 0) {
+                ping_process(pid, 18);
+                activities();
+                // Send SIGCONT signal to continue the process
+                printf("Continuing process with PID %d\n", pid);
+            } else {
+                printf("Process with PID %d is already running\n", pid);
+            }
+            return;
+        }
+    }
+    printf("No such process found with PID %d\n", pid);
 }

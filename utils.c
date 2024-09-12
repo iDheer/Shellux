@@ -2,10 +2,35 @@
 #include "commands.h"
 #include "prompt.h"
 
-void add_to_background_processes(pid_t pid, const char *log_entry, const char *state);
+void add_to_background_processes(pid_t pid, const char *log_entry);
+extern void remove_background_process(pid_t pid);
+extern void cleanup_bg_processes() ;
 
-void setup_terminal() {
-    terminal_fd = fileno(stdin); // Get the terminal's file descriptor
+int is_background_process(pid_t pid) {
+    for (int i = 0; i < bg_count; i++) {
+        if (bg_processes[i].pid == pid) {
+            return 1; // PID found in background processes
+        }
+    }
+    return 0; // PID not found
+}
+
+void handle_sigchld(int sig) {
+    int saved_errno = errno;
+    int status;
+    pid_t pid;
+
+    // Wait for exited or signaled children only
+    while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+        if (WIFEXITED(status) || WIFSIGNALED(status)) {
+            // Check if the PID is a background process
+            if (is_background_process(pid)) {
+                printf("Background process with PID %d exited.\n", pid);
+                remove_background_process(pid);
+            }
+        }
+    }
+    errno = saved_errno;
 }
 
 // Function to update the foreground PID
@@ -72,9 +97,7 @@ void purge_oldest_background_commands() {
     bg_count -= purge_count;
 }
 
-// Execute a command with redirection and background handling
 void execute_command(char *cmd, int is_background) {
-
     char *args[4096];
     char *input_file = NULL;
     char *output_file = NULL;
@@ -190,8 +213,7 @@ void execute_command(char *cmd, int is_background) {
         }
         iMan(args[1]);  // Call the iMan function with the command argument
         return;
-    }
-    else if (strcmp(args[0], "neonate") == 0) {
+    } else if (strcmp(args[0], "neonate") == 0) {
         if (argc != 3 || strcmp(args[1], "-n") != 0) {
             fprintf(stderr, "Usage: neonate -n [time_arg]\n");
             return;
@@ -203,19 +225,23 @@ void execute_command(char *cmd, int is_background) {
 
     pid_t pid = fork();
 
-    if (pid == 0) {  // Child process
-        signal(SIGINT, SIG_DFL);  // Reset to default handlers
-        signal(SIGTSTP, SIG_DFL);  // Reset to default handlers
+    if (pid < 0) {
+        perror("fork");
+        return; // Return to avoid continuing with invalid pid
+    } else if (pid == 0) {  // Child process
+        // Reset signal handlers to default for the child process
+        signal(SIGINT, SIG_DFL);
+        signal(SIGTSTP, SIG_DFL);
 
+        // Set the process group based on whether it's a background process
         if (is_background) {
             setpgid(0, 0);  // Create a new process group for the background process
-        } else {
-            setpgid(getpid(), getpid());  // Set the child process as the leader of its group
-        }
+        } 
 
         // Input redirection
         if (input_file != NULL) {
             int fd_in = open(input_file, O_RDONLY);
+
             if (fd_in < 0) {
                 perror("No such input file found!");
                 exit(EXIT_FAILURE);
@@ -227,7 +253,7 @@ void execute_command(char *cmd, int is_background) {
         // Output redirection
         if (output_file != NULL) {
             int fd_out = append_mode ? open(output_file, O_WRONLY | O_CREAT | O_APPEND, 0644) 
-                                     : open(output_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+                                    : open(output_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
             if (fd_out < 0) {
                 perror("Failed to open output file!");
                 exit(EXIT_FAILURE);
@@ -241,19 +267,41 @@ void execute_command(char *cmd, int is_background) {
             perror("execvp");
             exit(EXIT_FAILURE);
         }
-
-    } else if (pid > 0) {  // Parent process
-        // Update the foreground PID only if it's not a background process
+    }
+    
+        else {  // Parent process
         if (!is_background) {
             update_foreground_pid(pid);
+            
+            // Measure execution time
+            struct timeval start, end;
+            gettimeofday(&start, NULL);  // Start time
+            
+            int status;
+            do {
+                if (waitpid(pid, &status, 0) == -1 && errno != EINTR) {
+                    perror("waitpid");
+                    break;
+                }
+            } while (pid == -1 && errno == EINTR);
+            
+            gettimeofday(&end, NULL);  // End time
+            long seconds = end.tv_sec - start.tv_sec;
+            
+            if (seconds > 2) { 
+                printf("<%s@%s:~ %s : %ld seconds>\n", get_username(), get_system_name(), log_entry, seconds);
+            }
+            
+            // Reset foreground PID after command execution
+            update_foreground_pid(-1);
         } else {
-            setpgid(pid, pid); // Set process group in parent for background
-            add_to_background_processes(pid, log_entry, "Running");
+            // Background process handling
+            setpgid(pid, pid);  // Set the child process group ID
+            // freopen("/dev/null", "r", stdin);  // Redirect stdin to /dev/null
+            add_to_background_processes(pid, log_entry);
+            signal(SIGCHLD, handle_sigchld);
             printf("Background PID: %d\n", pid);
         }
-
-    } else {
-        perror("fork");
     }
 }
 
@@ -511,35 +559,41 @@ void process_command(char *input) {
 void activities() {
     // Update process statuses
     for (int i = 0; i < bg_count; i++) {
-        int status;
-        pid_t result = waitpid(bg_processes[i].pid, &status, WNOHANG);
+        char proc_status_path[256];
+        char line[256];
+        sprintf(proc_status_path, "/proc/%d/status", bg_processes[i].pid);
 
-        // If the process is still running
-        if (result == 0) {
-            // If this process was previously marked as stopped and hasn't been updated yet,
-            // you may need to ensure it retains the "Stopped" state correctly.
-            if (strcmp(bg_processes[i].state, "Stopped") == 0) {
-                // The process was stopped previously
-                strcpy(bg_processes[i].state, "Stopped");
-            } else {
-                strcpy(bg_processes[i].state, "Running");
+        FILE *status_file = fopen(proc_status_path, "r");
+        if (status_file == NULL) {
+            // If we can't open the file, assume the process has terminated
+            printf("error");
+            continue;
+        }
+
+        while (fgets(line, sizeof(line), status_file)) {
+            if (strncmp(line, "State:", 6) == 0) {
+                char proc_state;
+                sscanf(line, "State: %c", &proc_state);
+
+                if (proc_state == 'T') {
+                    strcpy(bg_processes[i].state, "Stopped");
+                } else {
+                    strcpy(bg_processes[i].state, "Running");
+                }
+                break;
             }
         }
-        // If the process has terminated
-        else if (result > 0) {
-            if (WIFEXITED(status) || WIFSIGNALED(status)) {
-                strcpy(bg_processes[i].state, "Terminated"); // Process has exited or was killed by a signal
-            }
-            // If the process is stopped (for example, via Ctrl-Z), in my case this else if block is not needed though, but will keep it due to all case handling
-            else if (WIFSTOPPED(status)) {
-                strcpy(bg_processes[i].state, "Stopped"); // Process was stopped
-            }
-        }
+        fclose(status_file);
     }
 
     // Print out the processes
     for (int i = 0; i < bg_count; i++) {
         printf("[%d] : %s - %s\n", bg_processes[i].pid, bg_processes[i].command, bg_processes[i].state);
+    }
+
+    // Cleanup background processes if they reach the limit
+    if (bg_count >= MAX_BG_PROCESSES) {
+        cleanup_bg_processes();
     }
 }
 

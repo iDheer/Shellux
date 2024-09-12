@@ -1,15 +1,15 @@
-iMan sleep
-iMan ls
+sleep 20
+sleep 5&
+sleep 15&
+ping 166280 9
 sleep 10
-proclore
-proclore 129787
-iMan ls
-q
-iMan ls
-q
-iMan ls
-iMan sleep
-sleep 10
-sleep 10&
 activities
-sleep 10&
+bg 166441
+sleep 10
+activities
+bg 166666
+sleep 15
+activities
+bg 166976
+sleep 15&
+bg 167231

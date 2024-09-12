@@ -2,7 +2,6 @@
 #include "commands.h"
 #include "prompt.h"
 
-int terminal_fd;
 int bg_count = 0;
 pid_t foreground_pid = -1; 
 char* shell_home_directory;
@@ -33,7 +32,7 @@ extern void remove_background_process(pid_t pid) {
     }
 }
 
-extern void add_to_background_processes(pid_t pid, char *command, const char *state) {
+extern void add_to_background_processes(pid_t pid, char *command) {
     if (bg_count < MAX_BG_PROCESSES) {
         bg_processes[bg_count].pid = pid;
         bg_processes[bg_count].command = strdup(command);
@@ -41,29 +40,12 @@ extern void add_to_background_processes(pid_t pid, char *command, const char *st
             perror("Failed to allocate memory for command");
             exit(EXIT_FAILURE);
         }
-        strcpy(bg_processes[bg_count].state, state);
+        // strcpy(bg_processes[bg_count].state, state);
         bg_count++;
     } else {
         purge_oldest_background_commands(); // Remove the oldest background process
-        add_to_background_processes(pid, command, state); // Try again
+        add_to_background_processes(pid, command); // Try again
     }
-}
-
-void handle_sigchld(int sig) {
-    int saved_errno = errno;
-    int status;
-    pid_t pid;
-
-    while ((pid = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0) {
-        if (WIFEXITED(status) || WIFSIGNALED(status)) {
-            printf("Process with PID %d exited.\n", pid);
-            remove_background_process(pid); 
-        } else if (WIFSTOPPED(status)) {
-            printf("Process with PID %d was stopped.\n", pid);
-            add_to_background_processes(pid, get_command_name(pid), "Stopped");
-        }
-    }
-    errno = saved_errno;
 }
 
 void custom_handler(int signum) {
@@ -80,7 +62,7 @@ void custom_handler(int signum) {
         if (foreground_pid > 0) {
             kill(foreground_pid, SIGTSTP); // Stop foreground process
             printf("Stopped foreground process (PID: %d)\n", foreground_pid);
-            add_to_background_processes(foreground_pid, get_command_name(foreground_pid), "Stopped");
+            add_to_background_processes(foreground_pid, get_command_name(foreground_pid));
             update_foreground_pid(-1); // Reset foreground PID
         } else {
             printf("\nNo foreground process to stop\n");
@@ -91,8 +73,7 @@ void custom_handler(int signum) {
 int main() {
     char command[4096];
     init_log(); 
-    setup_terminal();
-    signal(SIGCHLD, handle_sigchld); 
+    // signal(SIGCHLD, handle_sigchld); 
     initialize_shell_home_directory(); 
 
     // Set signal handlers for SIGINT and SIGTSTP
