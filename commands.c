@@ -423,108 +423,170 @@ void reveal(char **args, int argc) {
     free(entries);
 }
 
-void proclore(char **args, int argc) {
-    if(argc==1){
-        // print terminal's pid process group state vm size and executable path
-        char path[4096];
-        char status[4096];
-        char state[4096];
-        char exec_path[4096];
-
-        long int vmsize;
-
-        sprintf(path, "/proc/%d/status", getpid());
-        FILE *fp = fopen(path, "r");
-        if (fp == NULL) {
-            handle_error("Error opening file");
-            return;
-        }
-        //print pid
-        printf("Pid: %d\n",getpid());
-
-        //print process group
-        pid_t pgid = getpgid(getpid());
-
-        if (pgid < 0) {
-            handle_error("Error getting process group");
-            return;
-        }
-
-        printf("Process Group: %d\n", pgid);
-        //print state and vmsize using status file
-
-        while (fgets(status, sizeof(status), fp) != NULL) {
-            if (strncmp(status, "State:", 6) == 0) {
-                printf("State: %c+\n", status[7]);
-            } else if (strncmp(status, "VmSize:", 7) == 0) {
-                printf("%s", status);
-            }
-        }
-
-        fclose(fp);
-        return;
-    }
-
-    // extract pid from args and argc
-    int pid = getpid();
-    if(args[1]!=NULL)  pid = atoi(args[1]);
-    
-    if (pid <= 0) {
-        printf("Invalid PID\n");
-        return;
-    } 
-
+void print_process_details(pid_t pid) {
     char path[4096];
     char status[4096];
-    char state[4096];
     char exec_path[4096];
-    long int vmsize;
 
+    // Prepare the path to the status file
     sprintf(path, "/proc/%d/status", pid);
     FILE *fp = fopen(path, "r");
     if (fp == NULL) {
-        handle_error("Error opening file");
+        handle_error("Error opening status file");
         return;
     }
-    //print pid
-    printf("Pid: %d\n",pid);
 
-    //print process group
+    printf("PID: %d\n", pid);
+
+    // Get the process group ID
     pid_t pgid = getpgid(pid);
     if (pgid < 0) {
         handle_error("Error getting process group");
+        fclose(fp);
         return;
     }
     printf("Process Group: %d\n", pgid);
-    //print state and vmsize using status file
+
+    // Read and print the process state and memory size
     while (fgets(status, sizeof(status), fp) != NULL) {
-        
-         if (strncmp(status, "State:", 6) == 0) {
-                printf("pid: %d\n",getpid());
-           if (pgid == getpid()) {
-                printf("State: %c+\n",status[7]);
-            } else {
-              printf("State: %c\n",status[7]);
-            }
-        }
-        else if (strncmp(status, "VmSize:", 7) == 0) {
-            printf("%s", status);
+        if (strncmp(status, "State:", 6) == 0) {
+            // Print the full state description
+            printf("State: %s", status + 7); // Print the whole line, not just the character
+        } else if (strncmp(status, "VmSize:", 7) == 0) {
+            printf("%s", status); // Print virtual memory size
         }
     }
 
     fclose(fp);
-   
-    //print executable path
+
+    // Prepare the path to the executable link
     sprintf(path, "/proc/%d/exe", pid);
     ssize_t len = readlink(path, exec_path, sizeof(exec_path) - 1);
     if (len != -1) {
         exec_path[len] = '\0';
-        printf("Executable Path: %s\n", exec_path);
+        printf("Executable Path: %s\n", exec_path); // Print executable path
     } else {
         handle_error("Error reading executable path");
     }
-    
 }
+
+void proclore(char **args, int argc) {
+    if (argc == 1) {
+        // Print details of the opened shell (the current shell process)
+        print_process_details(getpid());
+    } else {
+        // Extract PID from args and print details of the specified process
+        int pid = atoi(args[1]);
+        if (pid <= 0) {
+            printf("Invalid PID\n");
+            return;
+        }
+        print_process_details(pid);
+    }
+}
+
+
+// void proclore(char **args, int argc) {
+//     if(argc==1){ // basically agar koi arguement ni di hui toh terminal ki kundli print karni hai 
+
+//         char path[4096];
+//         char status[4096];
+//         char state[4096];
+//         char exec_path[4096];
+
+//         long int vmsize;
+
+//         sprintf(path, "/proc/%d/status", getpid());
+//         FILE *fp = fopen(path, "r");
+//         if (fp == NULL) {
+//             handle_error("Error opening file");
+//             return;
+//         }
+
+//         printf("pid: %d\n",getpid());
+
+//         pid_t pgid = getpgid(getpid());
+
+//         if (pgid < 0) {
+//             handle_error("Error getting process group");
+//             return;
+//         }
+
+//         printf("Process Group: %d\n", pgid);
+
+//         while (fgets(status, sizeof(status), fp) != NULL) {
+//             if (strncmp(status, "State:", 6) == 0) {
+//                 printf("State: %c+\n", status[7]);
+//             } else if (strncmp(status, "VmSize:", 7) == 0) {
+//                 printf("%s", status);
+//             }
+//         }
+
+//         fclose(fp);
+//         return;
+//     }
+
+//     // extract pid from args and argc
+
+//     int pid = getpid();
+//     if(args[1]!=NULL){  
+//         pid = atoi(args[1]);
+//     }
+    
+//     if (pid <= 0) {
+//         printf("Invalid PID\n");
+//         return;
+//     } 
+
+//     char path[4096];
+//     char status[4096];
+//     char state[4096];
+//     char exec_path[4096];
+//     long int vmsize;
+
+//     sprintf(path, "/proc/%d/status", pid);
+//     FILE *fp = fopen(path, "r");
+//     if (fp == NULL) {
+//         handle_error("Error opening file");
+//         return;
+//     }
+
+
+//     printf("pid: %d\n",pid);
+
+//     pid_t pgid = getpgid(pid);
+//     if (pgid < 0) {
+//         handle_error("Error getting process group");
+//         return;
+//     }
+//     printf("Process Group: %d\n", pgid);
+
+//     while (fgets(status, sizeof(status), fp) != NULL) {
+        
+//          if (strncmp(status, "State:", 6) == 0) {
+//                 printf("pid: %d\n",getpid());
+//            if (pgid == getpid()) {
+//                 printf("State: %c+\n",status[7]);
+//             } else {
+//               printf("State: %c\n",status[7]);
+//             }
+//         }
+//         else if (strncmp(status, "VmSize:", 7) == 0) {
+//             printf("%s", status);
+//         }
+//     }
+
+//     fclose(fp);
+
+//     sprintf(path, "/proc/%d/exe", pid);
+//     ssize_t len = readlink(path, exec_path, sizeof(exec_path) - 1);
+//     if (len != -1) {
+//         exec_path[len] = '\0';
+//         printf("Executable Path: %s\n", exec_path);
+//     } else {
+//         handle_error("Error reading executable path");
+//     }
+// }
 
 void search_directory(const char *base_dir, const char *search_term, char results[MAX_RESULTS][MAX_PATH], int *result_count, int d_flag, int f_flag, int e_flag, char *found_file, char *found_dir, int *file_count, int *dir_count) {
     DIR *dir;

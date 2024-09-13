@@ -38,8 +38,17 @@
 #define COLOR_BOLD_TEAL "\033[1;38;2;0;128;128m"   // Bold Teal
 #define COLOR_BOLD_CORAL "\033[1;38;2;255;127;80m" // Bold Coral
 // ---------------------------------------------------------------------------------------------
+
+
+
+#define MAX_FUNCTION_NAME 256
+#define MAX_FUNCTION_BODY 1024
+
+
 #define PORT "80"
 #define MAX_PATH 4096
+#define MAX_FUNCTION_NAME 256
+#define MAX_FUNCTION_BODY 1024
 #define MAX_LOG_SIZE 15
 #define MAX_ALIASES 100
 #define BUFFER_SIZE 4096
@@ -62,19 +71,19 @@ typedef struct {
     char *command;
 } Alias;
 
-typedef struct {
-    char *func_name;
-    char *func_body;  
+typedef struct Function {
+    char name[MAX_FUNCTION_NAME];
+    char body[MAX_FUNCTION_BODY];
+    struct Function *next;
 } Function;
+
 // ---------------------------------------------------------------------------------------------
-extern int bg_count;               
-extern int terminal_fd;                   
+extern int bg_count;                              
 extern int alias_count;
-extern int function_count;
 extern pid_t foreground_pid;                 
+static Function *function_list;
 extern char *shell_home_directory;       
 extern Alias aliases[MAX_ALIASES];
-extern Function functions[MAX_FUNCTIONS];
 extern ProcessInfo bg_processes[MAX_BG_PROCESSES]; 
 // ---------------------------------------------------------------------------------------------
 #endif 

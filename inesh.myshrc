@@ -1,2 +1,13 @@
-# ye dekho pehla comment mera
 alias dikhao=ls
+
+func mk_hop()
+{
+	mkdir "$1" # Create the directory
+    hop "$1" # Change into the directory
+}
+
+func hop_seek()
+{
+    hop "$1" # Hop into this directory
+    seek "$1" # search for files/directories with the same name as the directory you just hopped into.
+}

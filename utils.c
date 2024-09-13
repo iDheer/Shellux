@@ -7,6 +7,8 @@ void handle_error(const char *message);
 extern void remove_background_process(pid_t pid);
 void add_to_background_processes(pid_t pid, const char *log_entry);
 
+int execute_custom_function(const char *command);
+
 int is_background_process(pid_t pid) {
     for (int i = 0; i < bg_count; i++) {
         if (bg_processes[i].pid == pid) {
@@ -151,6 +153,7 @@ void execute_command(char *cmd, int is_background) {
 
     args[argc] = NULL;  // Null-terminate the arguments array
 
+
     if (args[0] == NULL) return;  // No command entered
 
     // Log the command
@@ -234,7 +237,8 @@ void execute_command(char *cmd, int is_background) {
     if (pid < 0) {
         handle_error("Error forking process");
         return; // Return to avoid continuing with invalid pid
-    } else if (pid == 0) {  // Child process
+    } 
+    else if (pid == 0) {  // Child process
         // Reset signal handlers to default for the child process
         signal(SIGINT, SIG_DFL);
         signal(SIGTSTP, SIG_DFL);
@@ -272,30 +276,43 @@ void execute_command(char *cmd, int is_background) {
         for (int i = 0; i < alias_count; i++) {
             if (strcmp(args[0], aliases[i].alias_name) == 0) {
                 // Parse the aliased command and execute it
-                char *cmd = strdup(aliases[i].command);
-                char *token = strtok(cmd, " ");
+                char *cmdcmd= strdup(aliases[i].command);
+                char *token = strtok(cmdcmd, " ");
                 char *exec_args[100]; // Adjust size as needed
                 int arg_index = 0;
                 while (token != NULL && arg_index < 99) {  // Adjusted index limit
                     exec_args[arg_index++] = token;
                     token = strtok(NULL, " ");
                 }
-                exec_args[arg_index] = NULL;  // Null terminate the arguments
+                exec_args[arg_index] = NULL;  // Null-terminate the arguments
                 execvp(exec_args[0], exec_args); // Execute the command
-                free(cmd);
-                return;
+                free(cmdcmd);
+                // return;
             }
         }
 
-        // Execute the command
-        if (execvp(args[0], args) == -1) {
+        char string1[128]={'\0'};
+        
+        if(args[1]!=NULL){
+            strcpy(string1,args[0]);
+            strcat(string1," ");
+            strcat(string1,args[1]);
+        }
+    
+       if( execute_custom_function(string1)){
+
+       }
+        // If it's neither an alias nor a function, try to execute the command directly
+        else if (execvp(args[0], args) == -1) {
+                    // printf("reached");
             handle_error("Command execution failed");
             exit(EXIT_FAILURE);
         }
 
+        
     }
     
-        else {  // Parent process
+    else {  // Parent process
         if (!is_background) {
             update_foreground_pid(pid);
             
@@ -320,7 +337,8 @@ void execute_command(char *cmd, int is_background) {
             
             // Reset foreground PID after command execution
             update_foreground_pid(-1);
-        } else {
+        } 
+        else {
             // Background process handling
             setpgid(pid, pid);  // Set the child process group ID
             add_to_background_processes(pid, log_entry);
