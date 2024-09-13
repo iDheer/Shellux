@@ -12,20 +12,19 @@ void display_prompt() {
 
     char display_path[4096];
 
-    // Pehle check karo ki current directory home directory hai ya nahi
+    // Check if current directory is home directory
     if (is_home_directory(cwd)) {
-        snprintf(display_path, sizeof(display_path), "~"); // yeh bas string ko display ke buffer mein store kar deta, print karne ke liye printf ka use karna padega
+        snprintf(display_path, sizeof(display_path), "~");
     } else {
-        // Ab agar home directory nahi hai toh check karo ki current directory home directory ke andar hai ya nahi
-        if (strncmp(cwd, shell_home_directory, strlen(shell_home_directory)) == 0) { // to know ki kya current directory home directory ke andar hai ya nahi, cause agar hai toh intial string will be same as the home directory uske baad extra characters honge
+        // Check if current directory is inside the home directory
+        if (strncmp(cwd, shell_home_directory, strlen(shell_home_directory)) == 0) {
             snprintf(display_path, sizeof(display_path), "~%s", cwd + strlen(shell_home_directory));
-                // This is the format string used by snprintf. The %s placeholder will be replaced by the string argument following it.
-                // This expression calculates the address of the substring of cwd that starts right after shell_home_directory. This effectively gives the relative path from the home directory.
         } else {
             snprintf(display_path, sizeof(display_path), "%s", cwd);
         }
     }
 
-    printf("<%s@%s:%s> ", username, sysname, display_path);
+    // Print < in bold coral, username, @ in bold coral, sysname in bold coral, : in normal, and path in bold teal, and > in bold teal
+    printf(COLOR_BOLD_TEAL "<" COLOR_BOLD_TEAL "%s" COLOR_BOLD_TEAL "@" "%s" COLOR_RESET ":" COLOR_BOLD_CORAL "%s" COLOR_BOLD_CORAL ">" COLOR_RESET " ", username, sysname, display_path);
     fflush(stdout);
 }

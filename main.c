@@ -3,20 +3,24 @@
 #include "prompt.h"
 
 int bg_count = 0;
-pid_t foreground_pid = -1; 
-char* shell_home_directory;
 int alias_count = 0;
 int function_count = 0;
+pid_t foreground_pid = -1; 
+char* shell_home_directory;
 Alias aliases[MAX_ALIASES];
 Function functions[MAX_FUNCTIONS];
 ProcessInfo bg_processes[MAX_BG_PROCESSES];
+
+void handle_error(const char *message) {
+    fprintf(stderr, COLOR_RED "Error: %s: %s\n" COLOR_RESET, message, strerror(errno));
+}
 
 extern void cleanup_bg_processes() {
     for (int i = 0; i < bg_count; i++) {
         free(bg_processes[i].command); 
         bg_processes[i].command = NULL; // Avoid dangling pointers
     }
-    bg_count = 0; // Reset the background process count
+    bg_count = 0; 
 }
 
 char* trim_whitespace_a(char* str) {
@@ -29,44 +33,28 @@ char* trim_whitespace_a(char* str) {
 
 extern void load_myshrc() {
     FILE *file = fopen("inesh.myshrc", "r");
-    if (!file) {
-        perror("Failed to open .myshrc");
-        return;
-    }
+    if (file) {
+        char line[256];
+        while (fgets(line, sizeof(line), file)) {
+            // Process aliases
+            if (strstr(line, "alias") != NULL) {
+                char *alias_name = strtok(line + 6, "=");
+                char *command = strtok(NULL, "\n");
 
-    char line[256];
-    while (fgets(line, sizeof(line), file)) {
-        if (strstr(line, "alias") != NULL) {
-            char *alias_name = strtok(line + 6, "=");
-            char *command = strtok(NULL, "\n");
+                alias_name = trim_whitespace_a(alias_name);
+                command = trim_whitespace_a(command);
 
-            alias_name = trim_whitespace_a(alias_name);
-            command = trim_whitespace_a(command);
-
-            if (alias_name && command && alias_count < MAX_ALIASES) {
-                aliases[alias_count].alias_name = strdup(alias_name);
-                aliases[alias_count].command = strdup(command);
-                printf("Loaded alias: %s -> %s\n", alias_name, command); // Debug
-                alias_count++;
-            }
-        } else if (strstr(line, "func") != NULL) {
-            char *func_name = strtok(line + 5, " (");
-            char *func_body = strtok(NULL, "\n");
-
-            func_name = trim_whitespace_a(func_name);
-            func_body = trim_whitespace_a(func_body);
-
-            if (func_name && func_body && function_count < MAX_FUNCTIONS) {
-                functions[function_count].func_name = strdup(func_name);
-                functions[function_count].func_body = strdup(func_body);
-                printf("Loaded function: %s -> %s\n", func_name, func_body); // Debug
-                function_count++;
+                if (alias_name && command && alias_count < MAX_ALIASES) {
+                    aliases[alias_count].alias_name = strdup(alias_name);
+                    aliases[alias_count].command = strdup(command);
+                    printf("Loaded alias: %s -> %s\n", alias_name, command);  // Debug
+                    alias_count++;
+                }
             }
         }
+        fclose(file);
     }
-    fclose(file);
 }
-
 
 extern void remove_background_process(pid_t pid) {
     for (int i = 0; i < bg_count; i++) {
@@ -90,7 +78,7 @@ extern void add_to_background_processes(pid_t pid, char *command) {
         bg_processes[bg_count].pid = pid;
         bg_processes[bg_count].command = strdup(command);
         if (bg_processes[bg_count].command == NULL) {
-            perror("Failed to allocate memory for command");
+            handle_error("Failed to allocate memory for background process command");
             exit(EXIT_FAILURE);
         }
         // strcpy(bg_processes[bg_count].state, state);
@@ -136,12 +124,12 @@ int main() {
     sigemptyset(&sa.sa_mask);
 
     if (sigaction(SIGINT, &sa, NULL) == -1) {
-        perror("Failed to set SIGINT handler");
+        handle_error("Failed to set SIGINT handler");
         exit(EXIT_FAILURE);
     }
 
     if (sigaction(SIGTSTP, &sa, NULL) == -1) {
-        perror("Failed to set SIGTSTP handler");
+        handle_error("Failed to set SIGTSTP handler");
         exit(EXIT_FAILURE);
     }
 
@@ -160,7 +148,7 @@ int main() {
                 // Log out and kill all background processes
                 for (int i = 0; i < bg_count; i++) {
                     if (kill(bg_processes[i].pid, SIGTERM) == -1) {
-                        perror("Failed to terminate background process");
+                        handle_error("Failed to terminate background process");
                     }
                 }
                 break; // Exit the shell

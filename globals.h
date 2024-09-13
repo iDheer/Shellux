@@ -1,54 +1,60 @@
 #ifndef GLOBALS_H
 #define GLOBALS_H
 
-#include <unistd.h>
-#include <signal.h>
-#include <stdio.h>
-#include <sys/time.h>
-#include <stdbool.h>
-#include <netdb.h>
-#include <stdlib.h>
-#include <string.h>
-#include <errno.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <netdb.h>
-#include <linux/limits.h>
-#include <sys/types.h>
-#include <termios.h>
-#include <sys/wait.h>
 #include <pwd.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <sys/utsname.h>
-#include <limits.h>
-#include <dirent.h>
-#include <sys/stat.h>
 #include <grp.h>
 #include <time.h>
-#include <fcntl.h>
-#include <libgen.h>
 #include <ctype.h>
-
-// Constants for maximum sizes
-#define BUFFER_SIZE 4096
-#define HOST "man.he.net"
+#include <fcntl.h>
+#include <netdb.h>
+#include <netdb.h>
+#include <stdio.h>
+#include <errno.h>
+#include <string.h>
+#include <libgen.h>
+#include <stdlib.h>
+#include <limits.h>
+#include <unistd.h>
+#include <dirent.h>
+#include <signal.h>
+#include <stdbool.h>
+#include <termios.h>
+#include <sys/time.h>
+#include <sys/wait.h>
+#include <sys/stat.h>
+#include <arpa/inet.h>
+#include <sys/types.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <sys/utsname.h>
+#include <linux/limits.h>
+// ---------------------------------------------------------------------------------------------
+#define RESET "\033[0m"
+#define BLUE "\033[1;34m" 
+#define GREEN "\033[1;32m"
+#define COLOR_RED "\033[31m"      // Red color
+#define COLOR_RESET "\033[0m"     // Reset color
+#define COLOR_BOLD_TEAL "\033[1;38;2;0;128;128m"   // Bold Teal
+#define COLOR_BOLD_CORAL "\033[1;38;2;255;127;80m" // Bold Coral
+// ---------------------------------------------------------------------------------------------
 #define PORT "80"
 #define MAX_PATH 4096
-#define MAX_RESULTS 1000
-#define LOG_FILE_PATH "command_log.txt"
 #define MAX_LOG_SIZE 15
-#define MAX_COLORED_PATH 5016
 #define MAX_ALIASES 100
-#define MAX_FUNCTIONS 100
+#define BUFFER_SIZE 4096
 #define MAX_COMMANDS 100
-#define MAX_BG_PROCESSES 100 // Maximum number of background processes
-
-// Definition of the ProcessInfo structure
+#define MAX_RESULTS 1000
+#define HOST "man.he.net"
+#define MAX_FUNCTIONS 100
+#define MAX_BG_PROCESSES 100 
+#define MAX_COLORED_PATH 5016
+#define LOG_FILE_PATH "command_log.txt"
+// ---------------------------------------------------------------------------------------------
 typedef struct {
-    pid_t pid;               // Process ID
-    char *command;           // Command associated with the process
-    char state[32];          // Current state: "Running", "Stopped", or "Terminated"
+    pid_t pid;              
+    char *command;           
+    char state[32];          
 } ProcessInfo;
 
 typedef struct {
@@ -58,19 +64,17 @@ typedef struct {
 
 typedef struct {
     char *func_name;
-    char *func_body;  // This could be a more complex representation
+    char *func_body;  
 } Function;
-
-extern Alias aliases[MAX_ALIASES];
-extern Function functions[MAX_FUNCTIONS];
+// ---------------------------------------------------------------------------------------------
+extern int bg_count;               
+extern int terminal_fd;                   
 extern int alias_count;
 extern int function_count;
-
-// Declaration of global variables
-extern pid_t foreground_pid;                   // PID of the current foreground process
-extern int bg_count;                // Counter for background processes
-extern ProcessInfo bg_processes[MAX_BG_PROCESSES]; // Array of ProcessInfo structures
-extern char *shell_home_directory;         // Global variable to store the shell's home directory
-extern int terminal_fd;                    // File descriptor for the terminal
-
+extern pid_t foreground_pid;                 
+extern char *shell_home_directory;       
+extern Alias aliases[MAX_ALIASES];
+extern Function functions[MAX_FUNCTIONS];
+extern ProcessInfo bg_processes[MAX_BG_PROCESSES]; 
+// ---------------------------------------------------------------------------------------------
 #endif 

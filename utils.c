@@ -2,9 +2,10 @@
 #include "commands.h"
 #include "prompt.h"
 
-void add_to_background_processes(pid_t pid, const char *log_entry);
-extern void remove_background_process(pid_t pid);
 extern void cleanup_bg_processes() ;
+void handle_error(const char *message);
+extern void remove_background_process(pid_t pid);
+void add_to_background_processes(pid_t pid, const char *log_entry);
 
 int is_background_process(pid_t pid) {
     for (int i = 0; i < bg_count; i++) {
@@ -44,7 +45,7 @@ char* get_command_name(pid_t pid) {
     
     FILE *file = fopen(path, "r");
     if (!file) {
-        perror("fopen");
+        handle_error("Failed to open /proc/pid/comm file");
         return NULL;
     }
 
@@ -61,7 +62,7 @@ char* get_command_name(pid_t pid) {
 void initialize_shell_home_directory() {
     shell_home_directory = getcwd(NULL, 0); // Retrieve current working directory
     if (!shell_home_directory) {
-        perror("getcwd");
+        handle_error("Failed to get current working directory");
         exit(EXIT_FAILURE);
     }
 }
@@ -230,9 +231,8 @@ void execute_command(char *cmd, int is_background) {
     //------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 
-
     if (pid < 0) {
-        perror("fork");
+        handle_error("Error forking process");
         return; // Return to avoid continuing with invalid pid
     } else if (pid == 0) {  // Child process
         // Reset signal handlers to default for the child process
@@ -249,7 +249,7 @@ void execute_command(char *cmd, int is_background) {
             int fd_in = open(input_file, O_RDONLY);
 
             if (fd_in < 0) {
-                perror("No such input file found!");
+                handle_error("Failed to open input file");
                 exit(EXIT_FAILURE);
             }
             dup2(fd_in, STDIN_FILENO);  
@@ -261,59 +261,38 @@ void execute_command(char *cmd, int is_background) {
             int fd_out = append_mode ? open(output_file, O_WRONLY | O_CREAT | O_APPEND, 0644) 
                                     : open(output_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
             if (fd_out < 0) {
-                perror("Failed to open output file!");
+                handle_error("Failed to open output file");
                 exit(EXIT_FAILURE);
             }
             dup2(fd_out, STDOUT_FILENO);  
             close(fd_out);
         }
 
-            // Check for aliases only for non built-in commands
-    for (int i = 0; i < alias_count; i++) {
-        if (strcmp(args[0], aliases[i].alias_name) == 0) {
-            // Parse the aliased command and execute it
-            char *cmd = strdup(aliases[i].command);
-            char *token = strtok(cmd, " ");
-            char *exec_args[100]; // Adjust size as needed
-            int arg_index = 0;
-            while (token != NULL && arg_index < 99) {  // Adjusted index limit
-                exec_args[arg_index++] = token;
-                token = strtok(NULL, " ");
+        // Check for aliases only for non built-in commands
+        for (int i = 0; i < alias_count; i++) {
+            if (strcmp(args[0], aliases[i].alias_name) == 0) {
+                // Parse the aliased command and execute it
+                char *cmd = strdup(aliases[i].command);
+                char *token = strtok(cmd, " ");
+                char *exec_args[100]; // Adjust size as needed
+                int arg_index = 0;
+                while (token != NULL && arg_index < 99) {  // Adjusted index limit
+                    exec_args[arg_index++] = token;
+                    token = strtok(NULL, " ");
+                }
+                exec_args[arg_index] = NULL;  // Null terminate the arguments
+                execvp(exec_args[0], exec_args); // Execute the command
+                free(cmd);
+                return;
             }
-            exec_args[arg_index] = NULL;  // Null terminate the arguments
-            execvp(exec_args[0], exec_args); // Execute the command
-            free(cmd);
-            return;
         }
-    }
-
-    // Check for functions
-    for (int i = 0; i < function_count; i++) {
-        if (strcmp(args[0], functions[i].func_name) == 0) {
-            printf("Executing function: %s\n", functions[i].func_body);
-
-            // Execute the function body (you might need to tokenize the function body)
-            char *cmd = strdup(functions[i].func_body);
-            char *token = strtok(cmd, " ");
-            char *exec_args[100]; // Adjust size as needed
-            int arg_index = 0;
-            while (token != NULL && arg_index < 99) {  // Adjusted index limit
-                exec_args[arg_index++] = token;
-                token = strtok(NULL, " ");
-            }
-            exec_args[arg_index] = NULL;  // Null terminate the arguments
-            execvp(exec_args[0], exec_args); // Execute the command
-            free(cmd);
-            return;
-        }
-    }
 
         // Execute the command
         if (execvp(args[0], args) == -1) {
-            perror("execvp");
+            handle_error("Command execution failed");
             exit(EXIT_FAILURE);
         }
-        
+
     }
     
         else {  // Parent process
@@ -327,7 +306,7 @@ void execute_command(char *cmd, int is_background) {
             int status;
             do {
                 if (waitpid(pid, &status, 0) == -1 && errno != EINTR) {
-                    perror("waitpid");
+                    handle_error("Error waiting for child process");
                     break;
                 }
             } while (pid == -1 && errno == EINTR);
@@ -433,7 +412,7 @@ void execute_piped_commands(char *piped_commands[], int count, int is_background
     // Create pipes
     for (int i = 0; i < count - 1; i++) {
         if (pipe(pipefds + i * 2) == -1) {
-            perror("pipe");
+            handle_error("Failed to create pipe");
             return;
         }
     }
@@ -441,7 +420,7 @@ void execute_piped_commands(char *piped_commands[], int count, int is_background
     for (int i = 0; i < count; i++) {
         pids[i] = fork();
         if (pids[i] == -1) {
-            perror("fork");
+            handle_error("Failed to fork process");
             return;
         }
 
@@ -455,7 +434,7 @@ void execute_piped_commands(char *piped_commands[], int count, int is_background
             if (i == 0 && input_file != NULL) {
                 int fd_in = open(input_file, O_RDONLY);
                 if (fd_in < 0) {
-                    perror("Failed to open input file");
+                    handle_error("Failed to open input file");
                     exit(EXIT_FAILURE);
                 }
                 dup2(fd_in, STDIN_FILENO);
@@ -471,7 +450,7 @@ void execute_piped_commands(char *piped_commands[], int count, int is_background
                     fd_out = open(output_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
                 }
                 if (fd_out < 0) {
-                    perror("Failed to open output file");
+                    handle_error("Failed to open output file");
                     exit(EXIT_FAILURE);
                 }
                 dup2(fd_out, STDOUT_FILENO);
@@ -496,7 +475,7 @@ void execute_piped_commands(char *piped_commands[], int count, int is_background
             int background_flag = 0; // Flag to check for background execution
             tokenize_command(piped_commands[i], args, &background_flag); // Updated call
             if (execvp(args[0], args) == -1) {
-                perror("execvp");
+                handle_error("Command execution failed");
                 exit(EXIT_FAILURE);
             }
         }
@@ -612,7 +591,7 @@ void activities() {
         FILE *status_file = fopen(proc_status_path, "r");
         if (status_file == NULL) {
             // If we can't open the file, assume the process has terminated
-            printf("error");
+            handle_error("Failed to open /proc/pid/status file");
             continue;
         }
 

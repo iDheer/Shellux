@@ -2,10 +2,12 @@
 #include "commands.h"
 #include "prompt.h"
 
-static char prev_dir[PATH_MAX] = ""; // Global variable for previous directory
+int log_count = 0;
 static volatile int running = 1;  // Flag to control the loop
 char *command_log[MAX_LOG_SIZE];
-int log_count = 0;
+static char prev_dir[PATH_MAX] = ""; // Global variable for previous directory
+
+void handle_error(const char *message);
 
 void add_to_background_processes(pid_t pid, char *command);
 
@@ -19,13 +21,13 @@ void add_to_background_processes(pid_t pid, char *command);
         if (argc == 1 && strcmp(args[0], "hop") == 0) {
             target_dir = shell_home_directory;
             if (chdir(target_dir) == -1) {
-                perror("chdir");
+                handle_error("Error changing directory");
                 return;
             }
 
             // Print the new working directory
             if (getcwd(cwd, sizeof(cwd)) == NULL) {
-                perror("getcwd");
+                handle_error("Error getting current directory");
                 return;
             }
             printf("%s\n", cwd);
@@ -45,7 +47,7 @@ void add_to_background_processes(pid_t pid, char *command);
             char *final_dir = malloc(final_dir_size);
             if (final_dir == NULL) {
                 free(final_dir);
-                perror("malloc failed");
+                handle_error("Error allocating memory");
                 return;
             }
 
@@ -55,7 +57,7 @@ void add_to_background_processes(pid_t pid, char *command);
 
             // Attempt to change to the final directory
             if (chdir(final_dir) == -1) {
-                perror("chdir");
+                handle_error("Error changing directory");
                 free(final_dir);
                 return;
             }
@@ -75,11 +77,11 @@ void add_to_background_processes(pid_t pid, char *command);
             // Handle '..' for the parent directory
             else if (strcmp(target_dir, "..") == 0) {
                 if (chdir("..") == -1) {
-                    perror("chdir");
+                    handle_error("Error changing directory");
                     return;
                 }
                 if (getcwd(cwd, sizeof(cwd)) == NULL) {
-                    perror("getcwd");
+                    handle_error("Error getting current directory");
                     return;
                 }
                 printf("%s\n", cwd);
@@ -100,13 +102,13 @@ void add_to_background_processes(pid_t pid, char *command);
             
             // Save the current directory before changing it
             if (getcwd(cwd, sizeof(cwd)) == NULL) {
-                perror("getcwd");
+                handle_error("Error getting current directory");
                 return;
             }
 
             // Change the directory
             if (chdir(target_dir) == -1) {
-                perror("chdir");
+                handle_error("Error changing directory");
                 return;
             }
 
@@ -116,7 +118,7 @@ void add_to_background_processes(pid_t pid, char *command);
 
             // Print the new working directory
             if (getcwd(cwd, sizeof(cwd)) == NULL) {
-                perror("getcwd");
+                handle_error("Error getting current directory");
                 return;
             }
             printf("%s\n", cwd);
@@ -141,7 +143,7 @@ void add_to_background_processes(pid_t pid, char *command);
     void save_log() {
         FILE *log_file = fopen(LOG_FILE_PATH, "w");
         if (!log_file) {
-            perror("Failed to open log file");
+            handle_error("Failed to open log file");
             return;
         }
 
@@ -193,7 +195,7 @@ void add_to_background_processes(pid_t pid, char *command);
 
         command_log[log_count] = strdup(command);
         if (command_log[log_count] == NULL) {
-            perror("strdup");
+            handle_error("Failed to allocate memory for log entry");
             return;
         }
         log_count++;
@@ -219,7 +221,7 @@ void add_to_background_processes(pid_t pid, char *command);
     // Execute a command from the log
     void execute_from_log(int index) {
         if (index < 0 || index >= log_count) { 
-            printf("Error: Invalid log index\n");
+            handle_error("Invalid log index");
             return;
         }
 
@@ -240,7 +242,7 @@ void add_to_background_processes(pid_t pid, char *command);
             int index = atoi(args[2]);
             execute_from_log(index);
         } else {
-            printf("Error: Invalid log command\n");
+            handle_error("Invalid log command");
         }
     }
 
@@ -256,7 +258,7 @@ void print_file_details(const char *path, const char *filename) {
     snprintf(fullpath, sizeof(fullpath), "%s/%s", path, filename);
 
     if (stat(fullpath, &fileStat) == -1) {
-        perror("stat");
+        handle_error("Error getting file stats");
         return;
     }
 
@@ -312,7 +314,8 @@ void reveal(char **args, int argc) {
             } else if (args[optind][j] == 'l') {
                 show_long = 1;
             } else {
-                printf("Error: Invalid flag '%c'\n", args[optind][j]);
+                // printf("Error: Invalid flag '%c'\n", args[optind][j]);
+                handle_error("Invalid flag");
                 return;
             }
         }
@@ -329,7 +332,7 @@ void reveal(char **args, int argc) {
     } else if (strcmp(target_dir, "..") == 0 || strstr(target_dir, "../") != NULL) {
         char *resolved_path = realpath(target_dir, NULL); // Resolve relative paths
         if (resolved_path == NULL) {
-            perror("realpath");
+            handle_error("Error resolving path");
             return;
         }
         target_dir = resolved_path;
@@ -341,27 +344,27 @@ void reveal(char **args, int argc) {
         size_t final_dir_size = strlen("/home/") + strlen(username) + strlen("/") + strlen(offset) + 1;
         char *final_dir = malloc(final_dir_size);
         if (final_dir == NULL) {
-            perror("malloc failed");
+            handle_error("Error allocating memory");
             return;
         }
         snprintf(final_dir, final_dir_size, "/home/%s/%s", username, offset);
         target_dir = final_dir;
     } else if (strcmp(target_dir, "-") == 0) {
         if (strlen(prev_dir) == 0) {
-            printf("Error: No previous directory to reveal.\n");
+            handle_error("No previous directory");
             return;
         }
         target_dir = prev_dir; // Previous directory handling
     } else if (target_dir[0] == '/') {
         // Do nothing for absolute path
     } else {
-        printf("Error: Invalid directory '%s'\n", target_dir);
+        handle_error("Invalid directory");  
         return;        
     }
 
     DIR *dir = opendir(target_dir);
     if (dir == NULL) {
-        perror("opendir");
+        handle_error("Error opening directory");
         free(target_dir);
         return;
     }
@@ -369,7 +372,7 @@ void reveal(char **args, int argc) {
     struct dirent *entry;
     char **entries = malloc(sizeof(char *) * 1000);
     if (!entries) {
-        perror("malloc failed");
+        handle_error("Error allocating memory");
         closedir(dir);
         free(target_dir);
         return;
@@ -433,7 +436,7 @@ void proclore(char **args, int argc) {
         sprintf(path, "/proc/%d/status", getpid());
         FILE *fp = fopen(path, "r");
         if (fp == NULL) {
-            perror("Error opening file");
+            handle_error("Error opening file");
             return;
         }
         //print pid
@@ -443,7 +446,7 @@ void proclore(char **args, int argc) {
         pid_t pgid = getpgid(getpid());
 
         if (pgid < 0) {
-            perror("getpgid");
+            handle_error("Error getting process group");
             return;
         }
 
@@ -480,7 +483,7 @@ void proclore(char **args, int argc) {
     sprintf(path, "/proc/%d/status", pid);
     FILE *fp = fopen(path, "r");
     if (fp == NULL) {
-        perror("Error opening file");
+        handle_error("Error opening file");
         return;
     }
     //print pid
@@ -489,7 +492,7 @@ void proclore(char **args, int argc) {
     //print process group
     pid_t pgid = getpgid(pid);
     if (pgid < 0) {
-        perror("getpgid");
+        handle_error("Error getting process group");
         return;
     }
     printf("Process Group: %d\n", pgid);
@@ -518,14 +521,10 @@ void proclore(char **args, int argc) {
         exec_path[len] = '\0';
         printf("Executable Path: %s\n", exec_path);
     } else {
-        perror("Ececutable path");
+        handle_error("Error reading executable path");
     }
     
 }
-
-#define BLUE "\033[1;34m"
-#define GREEN "\033[1;32m"
-#define RESET "\033[0m"
 
 void search_directory(const char *base_dir, const char *search_term, char results[MAX_RESULTS][MAX_PATH], int *result_count, int d_flag, int f_flag, int e_flag, char *found_file, char *found_dir, int *file_count, int *dir_count) {
     DIR *dir;
@@ -534,7 +533,7 @@ void search_directory(const char *base_dir, const char *search_term, char result
     char path[MAX_PATH];
 
     if (!(dir = opendir(base_dir))) {
-        perror("opendir");
+        handle_error("Error opening directory");
         return;
     }
 
@@ -624,7 +623,7 @@ void seek(char **args, int argc) {
         if (file_count == 1 && dir_count == 0) {
             FILE *file = fopen(found_file, "r");
             if (!file) {
-                perror("fopen");
+                handle_error("Error opening file");
                 return;
             }
 
@@ -639,7 +638,7 @@ void seek(char **args, int argc) {
                 getcwd(cwd, sizeof(cwd));
                 printf("Changed directory to: %s\n", cwd);
             } else {
-                perror("chdir");
+                handle_error("Error changing directory");
             }
         } else {
             printf("No match found!\n");
@@ -682,7 +681,7 @@ void print_latest_pid() {
         // In the child process, execute a command to get the last PID
         FILE *fp = popen("pgrep -n .", "r"); // Use pgrep to get the most recent PID
         if (fp == NULL) {
-            perror("popen");
+            handle_error("Failed to get PID");
             exit(EXIT_FAILURE);
         }
 
@@ -695,7 +694,7 @@ void print_latest_pid() {
     } else if (pid > 0) {
         wait(NULL);  // Wait for the child process to finish
     } else {
-        perror("fork");
+        handle_error("fork");
         exit(EXIT_FAILURE);
     }
 }
@@ -757,7 +756,7 @@ void iMan(char *cmd) {
     hints.ai_socktype = SOCK_STREAM;
 
     if (getaddrinfo(HOST, PORT, &hints, &servinfo) != 0) {
-        perror("getaddrinfo");
+        handle_error("Failed to get address info");
         return;
     }
 
@@ -789,7 +788,7 @@ void iMan(char *cmd) {
              cmd, HOST);
 
     if (send(sockfd, request, strlen(request), 0) == -1) {
-        perror("send");
+        handle_error("Failed to send request");
         close(sockfd);
         return;
     }
@@ -802,7 +801,7 @@ void iMan(char *cmd) {
     }
 
     if (bytes_received == -1) {
-        perror("recv");
+        handle_error("Failed to receive data");
     }
 
     close(sockfd);  // Close the socket
@@ -815,7 +814,7 @@ void ping_process(pid_t pid, int signal_number) {
 
     // Check if the process with given PID exists
     if (kill(pid, 0) == -1) {
-        perror("No such process found");
+        handle_error("No such process found");
         return;
     }
 
@@ -823,7 +822,7 @@ void ping_process(pid_t pid, int signal_number) {
     if (kill(pid, actual_signal) == 0) {
         printf("Sent signal %d to process with pid %d\n", actual_signal, pid);
     } else {
-        perror("Failed to send signal");
+        handle_error("Failed to send signal");
     }
 }
     
@@ -853,7 +852,7 @@ void fg_process(pid_t pid) {
                 pid_t result = waitpid(pid, &status, WUNTRACED | WCONTINUED);
 
                 if (result == -1) {
-                    perror("waitpid failed");
+                    handle_error("waitpid failed");
                     break;
                 }
 
