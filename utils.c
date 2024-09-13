@@ -211,7 +211,7 @@ void execute_command(char *cmd, int is_background) {
             fprintf(stderr, "Usage: iman <command_name>\n");
             return;
         }
-        iMan(args[1]);  // Call the iMan function with the command argument
+        iMan(args[1]);  // iMan function with the command
         return;
     } else if (strcmp(args[0], "neonate") == 0) {
         if (argc != 3 || strcmp(args[1], "-n") != 0) {
@@ -221,9 +221,15 @@ void execute_command(char *cmd, int is_background) {
         int time_arg = atoi(args[2]);
         neonate(time_arg);
         return;
-    }
+        // now the alias commands
+    } 
 
+
+    //------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
     pid_t pid = fork();
+    //------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
 
     if (pid < 0) {
         perror("fork");
@@ -262,11 +268,52 @@ void execute_command(char *cmd, int is_background) {
             close(fd_out);
         }
 
+            // Check for aliases only for non built-in commands
+    for (int i = 0; i < alias_count; i++) {
+        if (strcmp(args[0], aliases[i].alias_name) == 0) {
+            // Parse the aliased command and execute it
+            char *cmd = strdup(aliases[i].command);
+            char *token = strtok(cmd, " ");
+            char *exec_args[100]; // Adjust size as needed
+            int arg_index = 0;
+            while (token != NULL && arg_index < 99) {  // Adjusted index limit
+                exec_args[arg_index++] = token;
+                token = strtok(NULL, " ");
+            }
+            exec_args[arg_index] = NULL;  // Null terminate the arguments
+            execvp(exec_args[0], exec_args); // Execute the command
+            free(cmd);
+            return;
+        }
+    }
+
+    // Check for functions
+    for (int i = 0; i < function_count; i++) {
+        if (strcmp(args[0], functions[i].func_name) == 0) {
+            printf("Executing function: %s\n", functions[i].func_body);
+
+            // Execute the function body (you might need to tokenize the function body)
+            char *cmd = strdup(functions[i].func_body);
+            char *token = strtok(cmd, " ");
+            char *exec_args[100]; // Adjust size as needed
+            int arg_index = 0;
+            while (token != NULL && arg_index < 99) {  // Adjusted index limit
+                exec_args[arg_index++] = token;
+                token = strtok(NULL, " ");
+            }
+            exec_args[arg_index] = NULL;  // Null terminate the arguments
+            execvp(exec_args[0], exec_args); // Execute the command
+            free(cmd);
+            return;
+        }
+    }
+
         // Execute the command
         if (execvp(args[0], args) == -1) {
             perror("execvp");
             exit(EXIT_FAILURE);
         }
+        
     }
     
         else {  // Parent process
@@ -297,7 +344,6 @@ void execute_command(char *cmd, int is_background) {
         } else {
             // Background process handling
             setpgid(pid, pid);  // Set the child process group ID
-            // freopen("/dev/null", "r", stdin);  // Redirect stdin to /dev/null
             add_to_background_processes(pid, log_entry);
             signal(SIGCHLD, handle_sigchld);
             printf("Background PID: %d\n", pid);

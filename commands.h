@@ -14,6 +14,8 @@ void handle_exit(int sig);
 void neonate(int time_arg);
 void fg_process(pid_t pid);
 void bg_process(pid_t pid);
+void mk_hop(const char *dir);
+void hop_seek(const char *dir);
 void hop(char **args, int argc);
 void seek(char **args, int argc);
 void reveal(char **args, int argc); 

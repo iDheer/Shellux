@@ -39,6 +39,8 @@
 #define LOG_FILE_PATH "command_log.txt"
 #define MAX_LOG_SIZE 15
 #define MAX_COLORED_PATH 5016
+#define MAX_ALIASES 100
+#define MAX_FUNCTIONS 100
 #define MAX_COMMANDS 100
 #define MAX_BG_PROCESSES 100 // Maximum number of background processes
 
@@ -48,6 +50,21 @@ typedef struct {
     char *command;           // Command associated with the process
     char state[32];          // Current state: "Running", "Stopped", or "Terminated"
 } ProcessInfo;
+
+typedef struct {
+    char *alias_name;
+    char *command;
+} Alias;
+
+typedef struct {
+    char *func_name;
+    char *func_body;  // This could be a more complex representation
+} Function;
+
+extern Alias aliases[MAX_ALIASES];
+extern Function functions[MAX_FUNCTIONS];
+extern int alias_count;
+extern int function_count;
 
 // Declaration of global variables
 extern pid_t foreground_pid;                   // PID of the current foreground process

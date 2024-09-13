@@ -421,12 +421,51 @@ void reveal(char **args, int argc) {
 }
 
 void proclore(char **args, int argc) {
-    if (argc != 2) {
-        printf("Usage: proclore <pid>\n");
+    if(argc==1){
+        // print terminal's pid process group state vm size and executable path
+        char path[4096];
+        char status[4096];
+        char state[4096];
+        char exec_path[4096];
+
+        long int vmsize;
+
+        sprintf(path, "/proc/%d/status", getpid());
+        FILE *fp = fopen(path, "r");
+        if (fp == NULL) {
+            perror("Error opening file");
+            return;
+        }
+        //print pid
+        printf("Pid: %d\n",getpid());
+
+        //print process group
+        pid_t pgid = getpgid(getpid());
+
+        if (pgid < 0) {
+            perror("getpgid");
+            return;
+        }
+
+        printf("Process Group: %d\n", pgid);
+        //print state and vmsize using status file
+
+        while (fgets(status, sizeof(status), fp) != NULL) {
+            if (strncmp(status, "State:", 6) == 0) {
+                printf("State: %c+\n", status[7]);
+            } else if (strncmp(status, "VmSize:", 7) == 0) {
+                printf("%s", status);
+            }
+        }
+
+        fclose(fp);
         return;
     }
+
     // extract pid from args and argc
-    int pid = atoi(args[1]);
+    int pid = getpid();
+    if(args[1]!=NULL)  pid = atoi(args[1]);
+    
     if (pid <= 0) {
         printf("Invalid PID\n");
         return;
@@ -458,8 +497,9 @@ void proclore(char **args, int argc) {
     while (fgets(status, sizeof(status), fp) != NULL) {
         
          if (strncmp(status, "State:", 6) == 0) {
-           if (pgid == pid &&(status[7]=='R' || status[7]=='S')) {
-            printf("State: %c+\n",status[7]);
+                printf("pid: %d\n",getpid());
+           if (pgid == getpid()) {
+                printf("State: %c+\n",status[7]);
             } else {
               printf("State: %c\n",status[7]);
             }

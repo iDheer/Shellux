@@ -5,6 +5,10 @@
 int bg_count = 0;
 pid_t foreground_pid = -1; 
 char* shell_home_directory;
+int alias_count = 0;
+int function_count = 0;
+Alias aliases[MAX_ALIASES];
+Function functions[MAX_FUNCTIONS];
 ProcessInfo bg_processes[MAX_BG_PROCESSES];
 
 extern void cleanup_bg_processes() {
@@ -14,6 +18,55 @@ extern void cleanup_bg_processes() {
     }
     bg_count = 0; // Reset the background process count
 }
+
+char* trim_whitespace_a(char* str) {
+    while (isspace((unsigned char)*str)) str++; // Trim leading whitespace
+    char *end = str + strlen(str) - 1;
+    while (end > str && isspace((unsigned char)*end)) end--; // Trim trailing whitespace
+    *(end + 1) = '\0'; // Null-terminate the trimmed string
+    return str;
+}
+
+extern void load_myshrc() {
+    FILE *file = fopen("inesh.myshrc", "r");
+    if (!file) {
+        perror("Failed to open .myshrc");
+        return;
+    }
+
+    char line[256];
+    while (fgets(line, sizeof(line), file)) {
+        if (strstr(line, "alias") != NULL) {
+            char *alias_name = strtok(line + 6, "=");
+            char *command = strtok(NULL, "\n");
+
+            alias_name = trim_whitespace_a(alias_name);
+            command = trim_whitespace_a(command);
+
+            if (alias_name && command && alias_count < MAX_ALIASES) {
+                aliases[alias_count].alias_name = strdup(alias_name);
+                aliases[alias_count].command = strdup(command);
+                printf("Loaded alias: %s -> %s\n", alias_name, command); // Debug
+                alias_count++;
+            }
+        } else if (strstr(line, "func") != NULL) {
+            char *func_name = strtok(line + 5, " (");
+            char *func_body = strtok(NULL, "\n");
+
+            func_name = trim_whitespace_a(func_name);
+            func_body = trim_whitespace_a(func_body);
+
+            if (func_name && func_body && function_count < MAX_FUNCTIONS) {
+                functions[function_count].func_name = strdup(func_name);
+                functions[function_count].func_body = strdup(func_body);
+                printf("Loaded function: %s -> %s\n", func_name, func_body); // Debug
+                function_count++;
+            }
+        }
+    }
+    fclose(file);
+}
+
 
 extern void remove_background_process(pid_t pid) {
     for (int i = 0; i < bg_count; i++) {
@@ -73,7 +126,7 @@ void custom_handler(int signum) {
 int main() {
     char command[4096];
     init_log(); 
-    // signal(SIGCHLD, handle_sigchld); 
+    load_myshrc();
     initialize_shell_home_directory(); 
 
     // Set signal handlers for SIGINT and SIGTSTP

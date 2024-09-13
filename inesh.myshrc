@@ -1,0 +1,11 @@
+alias dikhao=ls
+
+func mk_hop() {
+    mkdir "$1"
+    hop "$1"
+}
+
+func hop_seek() {
+    hop "$1"
+    seek "$1"
+}
