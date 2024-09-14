@@ -421,10 +421,58 @@ void reveal(char **args, int argc) {
     free(entries);
 }
 
+// void print_process_details(pid_t pid) { // backup function without the foreground and background process group check
+//     char path[4096];
+//     char status[4096];
+//     char exec_path[4096];
+
+//     // Prepare the path to the status file
+//     sprintf(path, "/proc/%d/status", pid);
+//     FILE *fp = fopen(path, "r");
+//     if (fp == NULL) {
+//         handle_error("Error opening status file");
+//         return;
+//     }
+
+//     printf("PID: %d\n", pid);
+
+//     // Get the process group ID
+//     pid_t pgid = getpgid(pid);
+//     if (pgid < 0) {
+//         handle_error("Error getting process group");
+//         fclose(fp);
+//         return;
+//     }
+//     printf("Process Group: %d\n", pgid);
+
+//     // Read and print the process state and memory size
+//     while (fgets(status, sizeof(status), fp) != NULL) {
+//         if (strncmp(status, "State:", 6) == 0) {
+//             // Print the full state description
+//             printf("State: %s", status + 7); // Print the whole line, not just the character
+//         } else if (strncmp(status, "VmSize:", 7) == 0) {
+//             printf("%s", status); // Print virtual memory size
+//         }
+//     }
+
+//     fclose(fp);
+
+//     // Prepare the path to the executable link
+//     sprintf(path, "/proc/%d/exe", pid);
+//     ssize_t len = readlink(path, exec_path, sizeof(exec_path) - 1);
+//     if (len != -1) {
+//         exec_path[len] = '\0';
+//         printf("Executable Path: %s\n", exec_path); // Print executable path
+//     } else {
+//         handle_error("Error reading executable path");
+//     }
+// }
+
 void print_process_details(pid_t pid) {
     char path[4096];
     char status[4096];
     char exec_path[4096];
+    char full_state[4096];  // To store the full state description
 
     // Prepare the path to the status file
     sprintf(path, "/proc/%d/status", pid);
@@ -445,17 +493,33 @@ void print_process_details(pid_t pid) {
     }
     printf("Process Group: %d\n", pgid);
 
-    // Read and print the process state and memory size
+    // Get the foreground process group ID for the terminal
+    pid_t fg_pgid = tcgetpgrp(STDIN_FILENO);
+
+    // Read the process state
+    char state_char = '\0';  // Variable to hold the state character
     while (fgets(status, sizeof(status), fp) != NULL) {
         if (strncmp(status, "State:", 6) == 0) {
-            // Print the full state description
-            printf("State: %s", status + 7); // Print the whole line, not just the character
-        } else if (strncmp(status, "VmSize:", 7) == 0) {
-            printf("%s", status); // Print virtual memory size
+            // Extract the state character (first character after "State:")
+            state_char = status[7];
+
+            // Store the full state description (everything after "State: ")
+            strncpy(full_state, status + 8, sizeof(full_state) - 1);  // +8 to skip "State: "
+            full_state[sizeof(full_state) - 1] = '\0';  // Ensure null-termination
+            break; // We only need the state line, so we can exit the loop early
         }
     }
 
     fclose(fp);
+
+    // Print the state with or without the '+' depending on foreground/background status
+    if (pgid == fg_pgid) {
+        // Foreground process: add a '+' after the state character
+        printf("State: %c+%s", state_char, full_state);
+    } else {
+        // Background process: print only the state character with the description
+        printf("State: %c%s", state_char, full_state);
+    }
 
     // Prepare the path to the executable link
     sprintf(path, "/proc/%d/exe", pid);
@@ -695,8 +759,6 @@ void handleNeonateCommand(char *command) {
     executeNeonate(interval); // Execute the neonate command with the specified time interval
 }
 
-
-
 void remove_html_tags(char *str) { // rephrase this function 
     regex_t regex;
     regmatch_t match[1];
@@ -769,7 +831,7 @@ void iMan(char *cmd) {
         return;
     }
 
-    int header_ended = 0;
+    // int header_ended = 0;
     int i=0;
     bool inside_tag = false;
     int counter=0;
@@ -885,14 +947,10 @@ void bg_process(pid_t pid) {
     // Check if the process exists in the background list
     for (int i = 0; i < bg_count; i++) {
         if (bg_processes[i].pid == pid) {
-            if (strcmp(bg_processes[i].state, "Stopped") == 0) {
                 // Send SIGCONT signal to continue the process
                 kill(pid, SIGCONT);
                 printf("Process with PID %d resumed in the background.\n", pid);
                 strcpy(bg_processes[i].state, "Running");
-            } else {
-                printf("Process with PID %d is already running in the background.\n", pid);
-            }
             return;
         }
     }

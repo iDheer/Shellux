@@ -78,7 +78,6 @@ extern int bg_count;
 extern int log_count;
 extern int alias_count;
 extern pid_t foreground_pid;                 
-static Function *function_list;
 extern char *shell_home_directory;    
 static volatile int running;
 extern struct termios orig_termios;

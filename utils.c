@@ -4,6 +4,7 @@
 #include "alias.h"
 
 void handle_sigchld(int sig);
+bool execute_func_with_argument(const char *func_name, const char *argument);
 
 // Get current username
 char* get_username() {
@@ -75,7 +76,7 @@ void execute_command(char *cmd, int is_background) {
     if (args[0] == NULL) return;  // No command entered
 
 
-    if(execute_function_with_arg(args[0], args[1])==true){
+    if(execute_func_with_argument(args[0], args[1])==true){
         return;
     }
 
@@ -169,8 +170,6 @@ void execute_command(char *cmd, int is_background) {
             return;
         }
     }
-
-
 
     //------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
     pid_t pid = fork();

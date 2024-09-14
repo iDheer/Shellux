@@ -10,7 +10,6 @@ int alias_count = 0;
 pid_t foreground_pid = -1; 
 char* shell_home_directory;
 static volatile int running = 1; 
-static Function *function_list = NULL;
 
 Alias aliases[MAX_ALIASES];
 char *command_log[MAX_LOG_SIZE];
