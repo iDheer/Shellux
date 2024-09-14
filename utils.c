@@ -60,6 +60,7 @@ void execute_command(char *cmd, int is_background) {
         }
         // Handle regular arguments
         else {
+        // printf("args[1] before the final null terminator: %s\n", args[1]);
             args[argc++] = cmd;
             while (*cmd != ' ' && *cmd != '\t' && *cmd != '\n' && *cmd != '\0') cmd++;
             if (*cmd != '\0') {
@@ -71,8 +72,12 @@ void execute_command(char *cmd, int is_background) {
 
     args[argc] = NULL;  // Null-terminate the arguments array
 
-
     if (args[0] == NULL) return;  // No command entered
+
+
+    if(execute_function_with_arg(args[0], args[1])==true){
+        return;
+    }
 
     // Log the command
     char log_entry[4096];
@@ -140,17 +145,16 @@ void execute_command(char *cmd, int is_background) {
             fprintf(stderr, "Usage: neonate -n [time_arg]\n");
             return;
         }
+        // Convert the time argument from string to integer
         int time_arg = atoi(args[2]);
-        neonate(time_arg);
+        neoexec(time_arg);
         return;
-        // now the alias commands
-    } 
+    }
 
 
     //------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
     pid_t pid = fork();
     //------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
 
     if (pid < 0) {
         handle_error("Error forking process");
@@ -205,23 +209,11 @@ void execute_command(char *cmd, int is_background) {
                 exec_args[arg_index] = NULL;  // Null-terminate the arguments
                 execvp(exec_args[0], exec_args); // Execute the command
                 free(cmdcmd);
-                // return;
+                return;
             }
         }
 
-        char string1[128]={'\0'};
-        
-        if(args[1]!=NULL){
-            strcpy(string1,args[0]);
-            strcat(string1," ");
-            strcat(string1,args[1]);
-        }
-    
-       if( execute_custom_function(string1)){
-
-       }
-        // If it's neither an alias nor a function, try to execute the command directly
-        else if (execvp(args[0], args) == -1) {
+        if (execvp(args[0], args) == -1) {
                     // printf("reached");
             handle_error("Command execution failed");
             exit(EXIT_FAILURE);
@@ -238,11 +230,16 @@ void execute_command(char *cmd, int is_background) {
             
             int status;
             do {
-                if (waitpid(pid, &status, 0) == -1 && errno != EINTR) {
-                    handle_error("Error waiting for child process");
-                    break;
+                if (waitpid(pid, &status, 0) == -1) {
+                    if (errno == EINTR) {
+                        continue;  // Interrupted by a signal, try again
+                    } else {
+                        handle_error("Error waiting for child process");
+                        break;
+                    }
                 }
-            } while (pid == -1 && errno == EINTR);
+            } while (!WIFEXITED(status) && !WIFSIGNALED(status));  // Keep waiting until process exits or is killed
+
             
             gettimeofday(&end, NULL);  // End time
             long seconds = end.tv_sec - start.tv_sec;
@@ -258,7 +255,6 @@ void execute_command(char *cmd, int is_background) {
             // Background process handling
             setpgid(pid, pid);  // Set the child process group ID
             add_to_background_processes(pid, log_entry);
-            signal(SIGCHLD, handle_sigchld);
             printf("Background PID: %d\n", pid);
         }
     }
@@ -484,6 +480,37 @@ void process_command(char *input) {
         // Execute based on the number of piped commands
         if (piped_command_count == 1) {
             // Single command
+
+            // char func[1000], func_arg[1000];
+            // char *p = strstr(piped_commands[0], " ");
+            // if (p == NULL)
+            // {
+
+            //     strcpy(func, piped_commands[0]);
+
+            //     bool b = execute_function_with_arg(func, func_arg);
+            //     if (b)
+            //     {
+            //         return;
+            //     }
+            // }
+            // else
+            // {
+            //     int i = 0;
+            //     while (piped_commands[0][i] != ' ')
+            //     {
+            //         func[i] = piped_commands[0][i];
+            //         i++;
+            //     }
+            //     func[i] = '\0';
+
+            //     bool b = execute_function_with_arg(func, p + 1);
+            //     if (b)
+            //     {
+            //         return;
+            //     }
+            // }
+
             execute_command(piped_commands[0], is_background);
         } else {
             // Multiple piped commands
@@ -501,19 +528,19 @@ void process_command(char *input) {
 }
 
 void activities() {
-    // Update process statuses
     for (int i = 0; i < bg_count; i++) {
         char proc_status_path[256];
         char line[256];
-        sprintf(proc_status_path, "/proc/%d/status", bg_processes[i].pid);
+        snprintf(proc_status_path, sizeof(proc_status_path), "/proc/%d/status", bg_processes[i].pid);
 
         FILE *status_file = fopen(proc_status_path, "r");
         if (status_file == NULL) {
-            // If we can't open the file, assume the process has terminated
-            handle_error("Failed to open /proc/pid/status file");
+            // Process likely terminated
+            strcpy(bg_processes[i].state, "Terminated");
             continue;
         }
 
+        // Check process status
         while (fgets(line, sizeof(line), status_file)) {
             if (strncmp(line, "State:", 6) == 0) {
                 char proc_state;
@@ -521,12 +548,15 @@ void activities() {
 
                 if (proc_state == 'T') {
                     strcpy(bg_processes[i].state, "Stopped");
+                } else if (proc_state == 'Z') {
+                    strcpy(bg_processes[i].state, "Terminated");  // Zombie process
                 } else {
                     strcpy(bg_processes[i].state, "Running");
                 }
                 break;
             }
         }
+
         fclose(status_file);
     }
 
@@ -535,9 +565,12 @@ void activities() {
         printf("[%d] : %s - %s\n", bg_processes[i].pid, bg_processes[i].command, bg_processes[i].state);
     }
 
-    // Cleanup background processes if they reach the limit
-    if (bg_count >= MAX_BG_PROCESSES) {
-        cleanup_bg_processes();
+    // Cleanup background processes that are "Terminated"
+    for (int i = 0; i < bg_count; i++) {
+        if (strcmp(bg_processes[i].state, "Terminated") == 0) {
+            remove_background_process(i);  // Remove terminated process from the list
+            i--;  // Adjust index since the array has shifted
+        }
     }
 }
 

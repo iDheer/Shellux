@@ -2,6 +2,7 @@
 #include "commands.h"
 #include "prompt.h"
 #include "alias.h"
+#include <signal.h>
 
 int bg_count = 0;
 int log_count = 0;
@@ -20,9 +21,18 @@ void handle_error(const char *message) {
     fprintf(stderr, COLOR_RED "Error: %s: %s\n" COLOR_RESET, message, strerror(errno));
 }
 
-void update_foreground_pid(pid_t pid) {
-    foreground_pid = pid;
+void update_foreground_pid(pid_t new_pid) {
+    // Disable signals briefly if necessary to avoid race conditions
+    sigset_t mask, old_mask;
+    sigemptyset(&mask);
+    sigaddset(&mask, SIGCHLD);  // Block SIGCHLD
+
+
+    sigprocmask(SIG_BLOCK, &mask, &old_mask);  // Block signals
+    foreground_pid = new_pid;
+    sigprocmask(SIG_SETMASK, &old_mask, NULL);  // Restore signals
 }
+
 
 int is_background_process(pid_t pid) {
     for (int i = 0; i < bg_count; i++) {

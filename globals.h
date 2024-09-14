@@ -10,6 +10,7 @@
 #include <netdb.h>
 #include <stdio.h>
 #include <errno.h>
+#include <regex.h>
 #include <string.h>
 #include <libgen.h>
 #include <stdlib.h>
@@ -80,6 +81,7 @@ extern pid_t foreground_pid;
 static Function *function_list;
 extern char *shell_home_directory;    
 static volatile int running;
+extern struct termios orig_termios;
 // ---------------------------------------------------------------------------------------------
 extern Alias aliases[MAX_ALIASES];
 extern char *command_log[MAX_LOG_SIZE];
@@ -90,6 +92,7 @@ void handle_error(const char *message);
 void handle_error(const char *message);
 void update_foreground_pid(pid_t pid);
 int is_background_process(pid_t pid);
+void remove_html_tags(char *str);
 void cleanup_bg_processes();
 void remove_background_process(pid_t pid);
 void add_to_background_processes(pid_t pid, char *command);

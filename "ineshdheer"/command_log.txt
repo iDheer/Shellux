@@ -1,0 +1,15 @@
+dikhao
+ls
+mk_hop ineshdheer
+dikhao
+mk_hop ineshdheer
+ls
+dikhao
+mk_hop ineshdheer
+ls
+dikhao
+mk_hop ineshdheer
+ls
+dikhao
+mk_hop ineshdheer
+clear

@@ -15,11 +15,16 @@ void handle_sigchld(int sig) {
             if (is_background_process(pid)) {
                 printf("Background process with PID %d exited.\n", pid);
                 remove_background_process(pid);
+            } else if (pid == foreground_pid) {
+                // Handle the case where the foreground process has exited
+                printf("Foreground process with PID %d exited.\n", pid);
+                update_foreground_pid(-1);
             }
         }
     }
     errno = saved_errno;
 }
+
 
 void custom_handler(int signum) {
     if (signum == SIGINT) { // Ctrl + C
@@ -45,24 +50,38 @@ void custom_handler(int signum) {
 
 int main() {
     char command[4096];
+    initialize_shell_home_directory(); 
     init_log(); 
     load_myshrc();
-    load_functions("inesh.myshrc");
-    initialize_shell_home_directory(); 
+    handle_sigchld(SIGCHLD);
 
     // Set signal handlers for SIGINT and SIGTSTP
-    struct sigaction sa;
-    sa.sa_handler = custom_handler;
-    sa.sa_flags = 0;
+
+    struct sigaction sa;  // Declare sa once
+
+    // Set up signal handler for SIGINT (Ctrl + C)
+    sa.sa_handler = custom_handler;  // Assign custom handler
     sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;  // No flags for now
 
     if (sigaction(SIGINT, &sa, NULL) == -1) {
-        handle_error("Failed to set SIGINT handler");
+        perror("Error setting SIGINT handler");
         exit(EXIT_FAILURE);
     }
 
+    // Set up signal handler for SIGTSTP (Ctrl + Z)
     if (sigaction(SIGTSTP, &sa, NULL) == -1) {
-        handle_error("Failed to set SIGTSTP handler");
+        perror("Error setting SIGTSTP handler");
+        exit(EXIT_FAILURE);
+    }
+
+    // Set up signal handler for SIGCHLD (for background process cleanup)
+    sa.sa_handler = handle_sigchld;  // Use another handler for SIGCHLD
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART;  // Restart syscalls if interrupted by handler
+
+    if (sigaction(SIGCHLD, &sa, NULL) == -1) {
+        perror("Error setting SIGCHLD handler");
         exit(EXIT_FAILURE);
     }
 
@@ -80,7 +99,10 @@ int main() {
             if (feof(stdin)) {
                 // Log out and kill all background processes
                 for (int i = 0; i < bg_count; i++) {
-                    if (kill(bg_processes[i].pid, SIGTERM) == -1) {
+                    if (kill(bg_processes[i].pid, SIGKILL) == -1) {
+                        if(waitpid(bg_processes[i].pid, 0, WNOHANG)==0){
+                            sleep(1);
+                        } // Wait for the process to terminate
                         handle_error("Failed to terminate background process");
                     }
                 }

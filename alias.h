@@ -4,8 +4,7 @@
 #include "globals.h"
 
 void load_myshrc();
-void load_functions(const char *myshrc_file) ;
-int execute_custom_function(const char *command);
-static void add_function(const char *name, const char *body);
+bool execute_function_with_arg(const char *function_name, const char *arg);
+
 
 #endif

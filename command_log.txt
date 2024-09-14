@@ -1,15 +1,15 @@
-bg 241181
-activities
-proclore 141181
-proclore 241181
-activities
-proclore 141181
-proclore 241181
-sleep 10&
-fg 242191
-sleep 10&
-fg 242295
-sleep 10&
-fg 242408
-proclore
-proclore 24208
+iMan sleep
+iMan ganda
+clear
+iMan
+neonate
+neonate -n 1
+neonate -n 4
+neonate -n4
+neonate -n 4
+clear
+neonate -n 4
+l
+ls
+neonate 
+neonate -n 4

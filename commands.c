@@ -154,7 +154,13 @@
 
     // Initialize the log at startup
     void init_log() {
-        FILE *log_file = fopen(LOG_FILE_PATH, "a");
+
+        char string1[100] = {'\0'};
+        strcpy(string1, shell_home_directory);
+        strcat(string1, "/command_log.txt");
+
+        FILE *log_file = fopen(string1, "a");
+
         if (log_file) {
             fclose(log_file); // Close immediately after ensuring the file exists
         }
@@ -598,103 +604,116 @@ void seek(char **args, int argc) {
     }
 }
 
-// Function to handle exit signals
-void handle_exit(int sig) {
-    running = 0;  // Set flag to stop printing PIDs
+void err(const char *s)
+{
+  perror(s);
+  return;
 }
 
-// Function to set the terminal to raw mode
-void set_raw_mode(struct termios *orig_termios) {
-    struct termios new_termios;
+struct termios orig_termios;
 
-    // Get the current terminal attributes
-    tcgetattr(STDIN_FILENO, orig_termios);
-    new_termios = *orig_termios;
-
-    // Modify the terminal attributes for raw mode
-    new_termios.c_lflag &= ~(ICANON | ECHO); // Disable canonical mode and echo
-    new_termios.c_cc[VMIN] = 1;              // Minimum of 1 character
-    new_termios.c_cc[VTIME] = 0;             // No timeout
-
-    // Set the terminal attributes to raw mode
-    tcsetattr(STDIN_FILENO, TCSANOW, &new_termios);
+void disableRawMode()
+{
+  if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios) == -1)
+    err("tcsetattr");
 }
 
-// Function to reset the terminal to original mode
-void reset_terminal(struct termios *orig_termios) {
-    // Restore the original terminal attributes
-    tcsetattr(STDIN_FILENO, TCSANOW, orig_termios);
+void enableRawMode()
+{
+  if (tcgetattr(STDIN_FILENO, &orig_termios) == -1)
+    err("tcgetattr");
+  atexit(disableRawMode);
+  struct termios raw = orig_termios;
+  raw.c_lflag &= ~(ICANON | ECHO);
+  if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1)
+    err("tcsetattr");
 }
 
-// Function to print the most recent PID
-void print_latest_pid() {
-    pid_t pid = fork();  // Fork a child to get the last PID
-    if (pid == 0) {
-        // In the child process, execute a command to get the last PID
-        FILE *fp = popen("pgrep -n .", "r"); // Use pgrep to get the most recent PID
-        if (fp == NULL) {
-            handle_error("Failed to get PID");
-            exit(EXIT_FAILURE);
-        }
+void neoexec(int time)
+{
 
-        char buffer[128];
-        if (fgets(buffer, sizeof(buffer), fp) != NULL) {
-            printf("%s", buffer);  // Print the PID
-        }
-        pclose(fp);
-        exit(EXIT_SUCCESS);  // Exit child process
-    } else if (pid > 0) {
-        wait(NULL);  // Wait for the child process to finish
-    } else {
-        handle_error("fork");
-        exit(EXIT_FAILURE);
+  setbuf(stdout, NULL);
+  enableRawMode();
+  int child = fork();
+
+  if (child == 0)
+  {
+    while (1)
+    {
+
+      FILE *f = fopen("/proc/sys/kernel/ns_last_pid", "r");
+      char pid[10];
+      fgets(pid, 10, f);
+
+      printf("%s", pid);
+
+      sleep(time);
     }
-}
+  }
 
-char kbhit() {
-    struct termios oldt, newt;
-    int oldf;
-    char ch;
-
-    tcgetattr(STDIN_FILENO, &oldt);
-    newt = oldt;
-    newt.c_lflag &= ~(ICANON | ECHO); // Disable canonical mode and echo
-    tcsetattr(STDIN_FILENO, TCSANOW, &newt);
-    oldf = fcntl(STDIN_FILENO, F_GETFL, 0);
-    fcntl(STDIN_FILENO, F_SETFL, oldf | O_NONBLOCK);
-
-    int result = read(STDIN_FILENO, &ch, 1); // Read a single character
-    tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
-    fcntl(STDIN_FILENO, F_SETFL, oldf); // Restore the original flags
-
-    if (result > 0) {
-        return ch; // Return the character read
+  else if (child > 0)
+  {
+    char c;
+    while (read(STDIN_FILENO, &c, 1) == 1 && c != 'x')
+    {
+      continue;
     }
 
-    return '\0'; // No character was read
+    kill(child, SIGKILL);
+  }
+  disableRawMode();
 }
 
-void neonate(int time_arg) {
-    struct termios orig_termios;
-    set_raw_mode(&orig_termios); // Set terminal to raw mode
-    signal(SIGINT, handle_exit);  // Catch Ctrl+C to exit
-    signal(SIGQUIT, handle_exit);  // Catch Ctrl+\ to exit
+void neonate(char *cmd)
+{
+  char *token = strtok(cmd, " ");
+  token = strtok(NULL, " ");
 
-    // Loop to print the PID every time_arg seconds
-    while (running) {
-        print_latest_pid(); // Print the latest PID
-        sleep(time_arg);    // Wait for specified time
+  if (token == NULL)
+  {
+    FILE *f = fopen("/proc/sys/kernel/ns_last_pid", "r");
+    char pid[10];
+    fgets(pid, 10, f);
 
-        // Check for user input
-        char key = kbhit();
-        if (key == 'x') {
-            printf("\nYou pressed 'x'. Exiting...\n");
-            running = 0;  // Stop the loop if 'x' is pressed
-        }
+    printf("%s", pid);
+    return;
+  }
+
+  token = strtok(NULL, " ");
+
+  if (token == NULL)
+  {
+    printf("Insufficient Args!!!\n");
+    return;
+  }
+
+  int time = atoi(token);
+
+  neoexec(time);
+}
+
+void remove_html_tags(char *str) { // rephrase this function 
+    regex_t regex;
+    regmatch_t match[1];
+    char* tagStart;
+    char* tagEnd;
+    const char *pattern = "<[^>]*>";
+
+    // Compile the regular expression
+    if (regcomp(&regex, pattern, REG_EXTENDED) != 0) {
+        fprintf(stderr, "Could not compile regex\n");
+        return;
     }
 
-    reset_terminal(&orig_termios); // Restore original terminal mode
-    printf("\nExiting neonate command.\n");
+    // Process the input string
+    while (regexec(&regex, str, 1, match, 0) == 0) {
+        tagStart = str + match[0].rm_so;
+        tagEnd = str + match[0].rm_eo;
+        memmove(tagStart, tagEnd, strlen(tagEnd) + 1);
+    }
+
+    // Free the compiled regular expression
+    regfree(&regex);
 }
 
 void iMan(char *cmd) {
@@ -746,11 +765,43 @@ void iMan(char *cmd) {
     }
 
     int header_ended = 0;
+    int i=0;
+    bool inside_tag = false;
+    int counter=0;
     while ((bytes_received = recv(sockfd, buffer, BUFFER_SIZE - 1, 0)) > 0) {
         buffer[bytes_received] = '\0';
+        if(counter==0){
 
-        printf("%s", buffer);  // Print the rest of the response
+            while(buffer[i]!='<'){
+                i++;
+            }
+
+            while (i < bytes_received)
+            {
+                
+                if (buffer[i] == '<')
+                {
+                    inside_tag = true; // Entering an HTML tag
+                }
+
+                if (!inside_tag)
+                {
+                    printf("%c", buffer[i]); // Only print characters outside of tags
+                }
+
+                if (buffer[i] == '>')
+                {
+                    inside_tag = false; // Exiting an HTML tag
+                }
+
+                i++;
+            }
+            counter++;
+        }
     }
+
+        remove_html_tags(buffer);
+        printf("%s", buffer);  // Print the rest of the response
 
     if (bytes_received == -1) {
         handle_error("Failed to receive data");
@@ -759,88 +810,69 @@ void iMan(char *cmd) {
     close(sockfd);  // Close the socket
 }
 
-// Function to send signal to a process
 void ping_process(pid_t pid, int signal_number) {
-    // Take modulo 32 of the signal number
     int actual_signal = signal_number % 32;
 
     // Check if the process with given PID exists
     if (kill(pid, 0) == -1) {
-        handle_error("No such process found");
+        if (errno == ESRCH) {
+            handle_error("No such process found");
+        } else if (errno == EPERM) {
+            handle_error("Permission denied to signal the process");
+        } else {
+            handle_error("Failed to find process");
+        }
         return;
     }
 
     // Send the signal to the process
     if (kill(pid, actual_signal) == 0) {
-        printf("Sent signal %d to process with pid %d\n", actual_signal, pid);
+        printf("Sent signal %d (%s) to process with PID %d\n", actual_signal, strsignal(actual_signal), pid);
     } else {
         handle_error("Failed to send signal");
     }
 }
-    
+
 void fg_process(pid_t pid) {
     int found = 0;
 
     for (int i = 0; i < bg_count; i++) {
         if (bg_processes[i].pid == pid) {
             found = 1;
-            foreground_pid = pid;
+            update_foreground_pid(pid);
             strcpy(bg_processes[i].state, "Running");
 
-            printf("Giving terminal control to PID %d\n", pid);
+            printf("Bringing PID %d to the foreground...\n", pid);
 
             // Remove the process from the background list
-            for (int j = i; j < bg_count - 1; j++) {
-                bg_processes[j] = bg_processes[j + 1];
-            }
-            bg_count--;
+            remove_background_process(pid);
 
-            kill(pid, SIGCONT); // Continue the process if it was stopped
-            printf("Process with PID %d has been brought to the foreground.\n", pid);
+            // Continue the process if it was stopped
+            kill(pid, SIGCONT);
 
             int status;
-            while (1) {
-                // Wait for the process state to change
-                pid_t result = waitpid(pid, &status, WUNTRACED | WCONTINUED);
+            waitpid(pid, &status, WUNTRACED);
 
-                if (result == -1) {
-                    handle_error("waitpid failed");
-                    break;
-                }
 
-                if (WIFEXITED(status)) {
-                    // Process has exited normally
-                    printf("Process with PID %d has exited.\n", pid);
-                    break;
-                }
-
-                if (WIFSIGNALED(status)) {
-                    // Process was killed by a signal
-                    printf("Process with PID %d was killed by signal %d.\n", pid, WTERMSIG(status));
-                    break;
-                }
-
-                if (WIFSTOPPED(status)) {
-                    // Process was stopped (e.g., via Ctrl-Z)
-                    printf("Process with PID %d was stopped.\n", pid);
-                    add_to_background_processes(pid, get_command_name(pid));
-                    break;
-                }
-
-                if (WIFCONTINUED(status)) {
-                    // Process was resumed (e.g., via SIGCONT)
-                    printf("Process with PID %d was continued.\n", pid);
-                }
+            if (WIFEXITED(status)) {
+                printf("Foreground process with PID %d exited normally.\n", pid);
+            } else if (WIFSIGNALED(status)) {
+                // printf("Foreground process with PID %d was terminated by signal %d.\n", pid, WTERMSIG(status));
+            } else if (WIFSTOPPED(status)) {
+                // printf("Foreground process with PID %d was stopped.\n", pid);
+                add_to_background_processes(pid, get_command_name(pid));
+            } else if (WIFCONTINUED(status)) {
+                // printf("Foreground process with PID %d continued.\n", pid);
             }
 
-            // Reset the foreground PID
-            foreground_pid = -1;
+            // Reset the foreground PID after process completes
+            update_foreground_pid(-1);
             return;
         }
     }
 
     if (!found) {
-        fprintf(stderr, "No such process found with PID %d\n", pid);
+        fprintf(stderr, "No background process found with PID %d\n", pid);
     }
 }
 
@@ -848,17 +880,17 @@ void bg_process(pid_t pid) {
     // Check if the process exists in the background list
     for (int i = 0; i < bg_count; i++) {
         if (bg_processes[i].pid == pid) {
-            // check if it was a stopped process
             if (strcmp(bg_processes[i].state, "Stopped") == 0) {
-                ping_process(pid, 18);
-                activities();
                 // Send SIGCONT signal to continue the process
-                printf("Continuing process with PID %d\n", pid);
+                kill(pid, SIGCONT);
+                printf("Process with PID %d resumed in the background.\n", pid);
+                strcpy(bg_processes[i].state, "Running");
             } else {
-                printf("Process with PID %d is already running\n", pid);
+                printf("Process with PID %d is already running in the background.\n", pid);
             }
             return;
         }
     }
-    printf("No such process found with PID %d\n", pid);
+
+    printf("No such background process found with PID %d.\n", pid);
 }
