@@ -141,15 +141,35 @@ void execute_command(char *cmd, int is_background) {
         iMan(args[1]);  // iMan function with the command
         return;
     } else if (strcmp(args[0], "neonate") == 0) {
-        if (argc != 3 || strcmp(args[1], "-n") != 0) {
-            fprintf(stderr, "Usage: neonate -n [time_arg]\n");
+        if (argc < 2) {
+            fprintf(stderr, "Usage: neonate [-n time_arg]\n");
             return;
         }
-        // Convert the time argument from string to integer
-        int time_arg = atoi(args[2]);
-        neoexec(time_arg);
-        return;
+        
+        // Check if the flag is present
+        if (strcmp(args[1], "-n") == 0) {
+            if (argc != 3) {
+                fprintf(stderr, "Usage: neonate -n [time_arg]\n");
+                return;
+            }
+            
+            int time_arg = atoi(args[2]);
+            if (time_arg <= 0) {
+                fprintf(stderr, "Error: time_arg must be a positive integer.\n");
+                return;
+            }
+            
+            char command[100];
+            snprintf(command, sizeof(command), "neonate -n %d", time_arg);
+            handleNeonateCommand(command);
+            return;
+        } else {
+            // If no flag is provided, just display the last PID
+            handleNeonateCommand(args[0]);
+            return;
+        }
     }
+
 
 
     //------------------------------------------------------------------------------------------------------------------------------------------------------------------------------

@@ -604,93 +604,98 @@ void seek(char **args, int argc) {
     }
 }
 
-void err(const char *s)
-{
-  perror(s);
-  return;
+
+// Error handling function
+void reportError(const char *message) {
+    perror(message);
 }
 
-struct termios orig_termios;
+// Global variable to hold terminal settings
+struct termios originalTermios;
 
-void disableRawMode()
-{
-  if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios) == -1)
-    err("tcsetattr");
-}
-
-void enableRawMode()
-{
-  if (tcgetattr(STDIN_FILENO, &orig_termios) == -1)
-    err("tcgetattr");
-  atexit(disableRawMode);
-  struct termios raw = orig_termios;
-  raw.c_lflag &= ~(ICANON | ECHO);
-  if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1)
-    err("tcsetattr");
-}
-
-void neoexec(int time)
-{
-
-  setbuf(stdout, NULL);
-  enableRawMode();
-  int child = fork();
-
-  if (child == 0)
-  {
-    while (1)
-    {
-
-      FILE *f = fopen("/proc/sys/kernel/ns_last_pid", "r");
-      char pid[10];
-      fgets(pid, 10, f);
-
-      printf("%s", pid);
-
-      sleep(time);
+// Function to restore the original terminal settings
+void restoreTerminalMode() {
+    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &originalTermios) == -1) {
+        reportError("tcsetattr failed");
     }
-  }
+}
 
-  else if (child > 0)
-  {
-    char c;
-    while (read(STDIN_FILENO, &c, 1) == 1 && c != 'x')
-    {
-      continue;
+// Function to set the terminal to raw mode
+void configureRawMode() {
+    if (tcgetattr(STDIN_FILENO, &originalTermios) == -1) {
+        reportError("tcgetattr failed");
+    }
+    atexit(restoreTerminalMode);
+    
+    struct termios rawSettings = originalTermios;
+    rawSettings.c_lflag &= ~(ICANON | ECHO);
+    
+    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &rawSettings) == -1) {
+        reportError("tcsetattr failed");
+    }
+}
+
+// Function to continuously print the last PID
+void executeNeonate(int interval) {
+    setbuf(stdout, NULL);
+    configureRawMode();
+
+    pid_t childProcess = fork();
+
+    if (childProcess == 0) {
+        // Child process
+        while (1) {
+            FILE *pidFile = fopen("/proc/sys/kernel/ns_last_pid", "r");
+            if (pidFile) {
+                char lastPid[10];
+                if (fgets(lastPid, sizeof(lastPid), pidFile) != NULL) {
+                    printf("%s", lastPid);
+                }
+                fclose(pidFile);
+            }
+            sleep(interval);
+        }
+    } else if (childProcess > 0) {
+        // Parent process
+        char inputChar;
+        while (read(STDIN_FILENO, &inputChar, 1) == 1 && inputChar != 'x') {
+            // Wait for the user to press 'x'
+        }
+        kill(childProcess, SIGKILL); // Terminate the child process
     }
 
-    kill(child, SIGKILL);
-  }
-  disableRawMode();
+    restoreTerminalMode(); // Restore terminal settings before exiting
 }
 
-void neonate(char *cmd)
-{
-  char *token = strtok(cmd, " ");
-  token = strtok(NULL, " ");
+// Function to handle the neonate command
+void handleNeonateCommand(char *command) {
+    char *argument = strtok(command, " "); // Get the command name
+    argument = strtok(NULL, " "); // Get the first argument
 
-  if (token == NULL)
-  {
-    FILE *f = fopen("/proc/sys/kernel/ns_last_pid", "r");
-    char pid[10];
-    fgets(pid, 10, f);
+    if (argument == NULL) {
+        // If no time argument is provided, print the last PID
+        FILE *pidFile = fopen("/proc/sys/kernel/ns_last_pid", "r");
+        if (pidFile) {
+            char lastPid[10];
+            fgets(lastPid, sizeof(lastPid), pidFile);
+            printf("%s", lastPid);
+            fclose(pidFile);
+        }
+        return;
+    }
 
-    printf("%s", pid);
-    return;
-  }
+    argument = strtok(NULL, " "); // Get the second argument
 
-  token = strtok(NULL, " ");
+    if (argument == NULL) {
+        printf("Error: Insufficient arguments provided!\n");
+        return;
+    }
 
-  if (token == NULL)
-  {
-    printf("Insufficient Args!!!\n");
-    return;
-  }
-
-  int time = atoi(token);
-
-  neoexec(time);
+    int interval = atoi(argument); // Convert the time argument to an integer
+    executeNeonate(interval); // Execute the neonate command with the specified time interval
 }
+
+
 
 void remove_html_tags(char *str) { // rephrase this function 
     regex_t regex;
