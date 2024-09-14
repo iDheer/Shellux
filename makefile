@@ -2,7 +2,7 @@
 CC = gcc
 
 # Source files
-SRCS = main.c prompt.c commands.c utils.c
+SRCS = main.c prompt.c commands.c utils.c init.c
 
 # Output executable
 TARGET = a.out

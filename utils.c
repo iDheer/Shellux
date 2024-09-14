@@ -1,73 +1,9 @@
 #include "utils.h"
 #include "commands.h"
 #include "prompt.h"
+#include "alias.h"
 
-extern void cleanup_bg_processes() ;
-void handle_error(const char *message);
-extern void remove_background_process(pid_t pid);
-void add_to_background_processes(pid_t pid, const char *log_entry);
-
-int execute_custom_function(const char *command);
-
-int is_background_process(pid_t pid) {
-    for (int i = 0; i < bg_count; i++) {
-        if (bg_processes[i].pid == pid) {
-            return 1; // PID found in background processes
-        }
-    }
-    return 0; // PID not found
-}
-
-void handle_sigchld(int sig) {
-    int saved_errno = errno;
-    int status;
-    pid_t pid;
-
-    // Wait for exited or signaled children only
-    while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
-        if (WIFEXITED(status) || WIFSIGNALED(status)) {
-            // Check if the PID is a background process
-            if (is_background_process(pid)) {
-                printf("Background process with PID %d exited.\n", pid);
-                remove_background_process(pid);
-            }
-        }
-    }
-    errno = saved_errno;
-}
-
-// Function to update the foreground PID
-void update_foreground_pid(pid_t pid) {
-    foreground_pid = pid;
-}
-
-char* get_command_name(pid_t pid) {
-    char path[40];
-    snprintf(path, sizeof(path), "/proc/%d/comm", pid);
-    
-    FILE *file = fopen(path, "r");
-    if (!file) {
-        handle_error("Failed to open /proc/pid/comm file");
-        return NULL;
-    }
-
-    char *command = malloc(256); // Allocate memory for the command name
-    if (fgets(command, 256, file) != NULL) {
-        // Remove the newline character at the end
-        command[strcspn(command, "\n")] = 0;
-    }
-    fclose(file);
-    return command;
-}
-
-// Initialize the shell home directory
-void initialize_shell_home_directory() {
-    shell_home_directory = getcwd(NULL, 0); // Retrieve current working directory
-    if (!shell_home_directory) {
-        handle_error("Failed to get current working directory");
-        exit(EXIT_FAILURE);
-    }
-}
+void handle_sigchld(int sig);
 
 // Get current username
 char* get_username() {
@@ -80,24 +16,6 @@ char* get_system_name() {
     static struct utsname unameData;
     uname(&unameData);
     return unameData.nodename;
-}
-
-// Check if the current directory is the home directory
-int is_home_directory(const char *cwd) {
-    return strcmp(cwd, shell_home_directory) == 0;
-}
-
-// Purge the oldest background commands from the global array
-void purge_oldest_background_commands() {
-    int purge_count = MAX_BG_PROCESSES / 2; // Purge the oldest 50 commands
-
-    // Shift remaining commands up by 50
-    for (int i = purge_count; i < bg_count; i++) {
-        bg_processes[i - purge_count] = bg_processes[i];
-    }
-
-    // Reduce the background process count
-    bg_count -= purge_count;
 }
 
 void execute_command(char *cmd, int is_background) {
@@ -308,8 +226,6 @@ void execute_command(char *cmd, int is_background) {
             handle_error("Command execution failed");
             exit(EXIT_FAILURE);
         }
-
-        
     }
     
     else {  // Parent process
@@ -514,21 +430,6 @@ void execute_piped_commands(char *piped_commands[], int count, int is_background
             printf("Background process PID: %d\n", pids[i]);
         }
     }
-}
-
-// Function to trim whitespace from the beginning and end of a string
-char *trim_whitespace(char *str) {
-    char *end;
-
-    // Trim leading space
-    while (isspace((unsigned char)*str)) str++;
-
-    // Trim trailing space
-    end = str + strlen(str) - 1;
-    while (end > str && isspace((unsigned char)*end)) end--;
-    end[1] = '\0'; // Null-terminate after the last non-space character
-
-    return str;
 }
 
 void process_command(char *input) {

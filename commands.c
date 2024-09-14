@@ -1,15 +1,7 @@
 #include "utils.h"
 #include "commands.h"
 #include "prompt.h"
-
-int log_count = 0;
-static volatile int running = 1;  // Flag to control the loop
-char *command_log[MAX_LOG_SIZE];
-static char prev_dir[PATH_MAX] = ""; // Global variable for previous directory
-
-void handle_error(const char *message);
-
-void add_to_background_processes(pid_t pid, char *command);
+#include "alias.h"
 
     void hop(char **args, int argc) {
         char *target_dir;
@@ -204,7 +196,7 @@ void add_to_background_processes(pid_t pid, char *command);
     // Display the log
     void display_log() {
         for (int i = 0; i < log_count; ++i) {
-            printf("%d: %s\n", i, command_log[log_count - i - 1]); // Display the log in reverse order with index
+            printf("%d: %s\n", i+1, command_log[log_count - i - 1]); // Display the log in reverse order with index
         }
     }
 
@@ -220,12 +212,12 @@ void add_to_background_processes(pid_t pid, char *command);
 
     // Execute a command from the log
     void execute_from_log(int index) {
-        if (index < 0 || index >= log_count) { 
+        if (index < 0 || index > log_count) { 
             handle_error("Invalid log index");
             return;
         }
 
-        char *command_to_execute = command_log[index];
+        char *command_to_execute = command_log[log_count - index];
         printf("Executing: %s\n", command_to_execute);
 
         process_command(command_to_execute);
@@ -485,108 +477,6 @@ void proclore(char **args, int argc) {
     }
 }
 
-
-// void proclore(char **args, int argc) {
-//     if(argc==1){ // basically agar koi arguement ni di hui toh terminal ki kundli print karni hai 
-
-//         char path[4096];
-//         char status[4096];
-//         char state[4096];
-//         char exec_path[4096];
-
-//         long int vmsize;
-
-//         sprintf(path, "/proc/%d/status", getpid());
-//         FILE *fp = fopen(path, "r");
-//         if (fp == NULL) {
-//             handle_error("Error opening file");
-//             return;
-//         }
-
-//         printf("pid: %d\n",getpid());
-
-//         pid_t pgid = getpgid(getpid());
-
-//         if (pgid < 0) {
-//             handle_error("Error getting process group");
-//             return;
-//         }
-
-//         printf("Process Group: %d\n", pgid);
-
-//         while (fgets(status, sizeof(status), fp) != NULL) {
-//             if (strncmp(status, "State:", 6) == 0) {
-//                 printf("State: %c+\n", status[7]);
-//             } else if (strncmp(status, "VmSize:", 7) == 0) {
-//                 printf("%s", status);
-//             }
-//         }
-
-//         fclose(fp);
-//         return;
-//     }
-
-//     // extract pid from args and argc
-
-//     int pid = getpid();
-//     if(args[1]!=NULL){  
-//         pid = atoi(args[1]);
-//     }
-    
-//     if (pid <= 0) {
-//         printf("Invalid PID\n");
-//         return;
-//     } 
-
-//     char path[4096];
-//     char status[4096];
-//     char state[4096];
-//     char exec_path[4096];
-//     long int vmsize;
-
-//     sprintf(path, "/proc/%d/status", pid);
-//     FILE *fp = fopen(path, "r");
-//     if (fp == NULL) {
-//         handle_error("Error opening file");
-//         return;
-//     }
-
-
-//     printf("pid: %d\n",pid);
-
-//     pid_t pgid = getpgid(pid);
-//     if (pgid < 0) {
-//         handle_error("Error getting process group");
-//         return;
-//     }
-//     printf("Process Group: %d\n", pgid);
-
-//     while (fgets(status, sizeof(status), fp) != NULL) {
-        
-//          if (strncmp(status, "State:", 6) == 0) {
-//                 printf("pid: %d\n",getpid());
-//            if (pgid == getpid()) {
-//                 printf("State: %c+\n",status[7]);
-//             } else {
-//               printf("State: %c\n",status[7]);
-//             }
-//         }
-//         else if (strncmp(status, "VmSize:", 7) == 0) {
-//             printf("%s", status);
-//         }
-//     }
-
-//     fclose(fp);
-
-//     sprintf(path, "/proc/%d/exe", pid);
-//     ssize_t len = readlink(path, exec_path, sizeof(exec_path) - 1);
-//     if (len != -1) {
-//         exec_path[len] = '\0';
-//         printf("Executable Path: %s\n", exec_path);
-//     } else {
-//         handle_error("Error reading executable path");
-//     }
-// }
 
 void search_directory(const char *base_dir, const char *search_term, char results[MAX_RESULTS][MAX_PATH], int *result_count, int d_flag, int f_flag, int e_flag, char *found_file, char *found_dir, int *file_count, int *dir_count) {
     DIR *dir;
