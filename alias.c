@@ -5,7 +5,7 @@
 
 void load_myshrc() {
     // Process aliases from file (if needed)
-    FILE *file = fopen("inesh.myshrc", "r");
+    FILE *file = fopen("shellux.myshrc", "r");
     if (file) {
         char line[256];
         while (fgets(line, sizeof(line), file)) {
@@ -32,7 +32,7 @@ void load_myshrc() {
 bool execute_func_with_argument(const char *func_name, const char *argument){
     char config_path[1024];
 
-    snprintf(config_path, sizeof(config_path), "%s/%s", shell_home_directory, "inesh.myshrc");
+    snprintf(config_path, sizeof(config_path), "%s/%s", shell_home_directory, "shellux.myshrc");
 
     FILE *config_file = fopen(config_path, "r");
     if (!config_file){

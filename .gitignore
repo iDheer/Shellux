@@ -1,0 +1,26 @@
+# Build artifacts
+obj/
+bin/
+*.o
+*.out
+
+# Old binaries
+my_shell
+miniproject
+
+# Editor/IDE
+.vscode/
+*.swp
+*.swo
+*~
+
+# Debug files
+*.dSYM/
+build/
+
+# Log files (generated at runtime)
+command_log.txt
+
+# OS files
+.DS_Store
+Thumbs.db
